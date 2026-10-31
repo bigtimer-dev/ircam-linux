@@ -104,7 +104,7 @@ python3 tools/extract_resources.py SRC  # regenerate palettes/emissivity from th
 ## Credits
 
 - [OpenRMH-IRCAM](https://github.com/Cyclotronic/OpenRMH-IRCAM) is the original application.
-- The P2 Pro vendor control protocol (range switching) follows the reverse-engineering in [p2pro-rs](https://github.com/LeoDJ/P2Pro-Viewer) and related projects.
+- The P2 Pro vendor control protocol (range switching) follows [p2pro-rs](https://github.com/mbuesch/p2pro-rs) by Michael Büsch.
 
 ## License
 
