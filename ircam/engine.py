@@ -487,13 +487,16 @@ class Engine:
         # statistics
         self.peak_max = max(self.peak_max, r.tmax)
         self.peak_min = min(self.peak_min, r.tmin)
-        # 2D plot
-        sets = s["plot_sets"]
-        vals = [r.sources.get(ps["source"], float("nan")) if ps["enabled"] else None for ps in sets]
-        self.plot.append((now - self.plot_t0, vals))
-        horizon = max(5, s["plot_seconds"])
-        while self.plot and self.plot[0][0] < (now - self.plot_t0) - horizon:
-            self.plot.pop(0)
+        # 2D plot: only collected while the plot is shown
+        if s["plot_visible"]:
+            sets = s["plot_sets"]
+            vals = [r.sources.get(ps["source"], float("nan")) if ps["enabled"] else None for ps in sets]
+            self.plot.append((now - self.plot_t0, vals))
+            horizon = max(5, s["plot_seconds"])
+            while self.plot and self.plot[0][0] < (now - self.plot_t0) - horizon:
+                self.plot.pop(0)
+        elif self.plot:
+            self.plot = []
         # alarms
         r.alarms = self._alarms(r, now)
         # data logging

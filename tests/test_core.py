@@ -159,6 +159,19 @@ class Files(unittest.TestCase):
         time.sleep(0.1)
         self.assertEqual(self.e.latest.alarms[:2], [True, False])
 
+    def test_plot_data_only_while_visible(self):
+        self.s["plot_visible"] = False
+        self.e.connect(DemoSource())
+        self._wait()
+        time.sleep(0.2)
+        self.assertEqual(self.e.plot, [])
+        self.s["plot_visible"] = True
+        time.sleep(0.3)
+        self.assertGreater(len(self.e.plot), 3)
+        self.s["plot_visible"] = False
+        time.sleep(0.2)
+        self.assertEqual(self.e.plot, [])
+
     def test_manual_range_selection(self):
         self.e.connect(DemoSource())
         self._wait()

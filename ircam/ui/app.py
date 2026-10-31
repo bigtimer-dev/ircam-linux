@@ -616,6 +616,7 @@ class IrcamApp(Adw.Application):
         elif key == "plot_visible":
             self.plot.set_visible(value)
             if value:
+                self.plot.clear()  # start a fresh plot at t = 0
                 # give the plot about 30 % of the height when it appears
                 GLib.idle_add(lambda: self.vpan.set_position(int(self.vpan.get_height() * 0.7)) and False)
         elif key == "tools_visible":
