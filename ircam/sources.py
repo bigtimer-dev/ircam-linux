@@ -59,6 +59,10 @@ class Source:
         log("The selected camera does not support a high temperature range.", "warning")
         return False
 
+    def current_high_range(self):
+        """True/False when the camera can report its active range, None when it can't."""
+        return None
+
     def write_config(self, log):
         """Send the configuration to the camera (pool 1/3 only) and regenerate the LUT."""
         thermal.generate_lut(self.cam)
@@ -267,6 +271,12 @@ class V4L2Source(Source):
             log(f"P2 Pro switched to the {'high' if high else 'low'} temperature range.", "success")
             return True
         return super().set_range(high, log)
+
+    def current_high_range(self):
+        if self.p2 is not None:
+            with self.lock:
+                return not self.p2.high_gain()  # high gain = low range
+        return None
 
     def write_config(self, log):
         cam = self.cam

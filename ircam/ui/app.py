@@ -128,6 +128,8 @@ class IrcamApp(Adw.Application):
                 self._stop_screen_capture()
         elif kind == "range":
             self.btn_range.set_tooltip_text(f"Temperature range: {'HIGH' if payload else 'LOW'} (T)")
+        elif kind == "auto_range":
+            self.set_setting("auto_range", payload)
         return False
 
     def run_event(self, ev):
@@ -382,6 +384,12 @@ class IrcamApp(Adw.Application):
         check("sharpening", "Image sharpening", "Y")
         check("focus_assist", "Focus assist")
         check("label_background", "Label backgrounds")
+        heading("TEMPERATURE RANGE")
+        check("auto_range", "Automatic range switching")
+        hint = Gtk.Label(label="High range above the set maximum\n(thresholds in Settings → Camera)", xalign=0)
+        hint.add_css_class("dim-label")
+        hint.add_css_class("caption")
+        box.append(hint)
         heading("COLOR BAR")
         row = Gtk.Box(spacing=0, css_classes=["linked"])
         self.bar_auto = Gtk.ToggleButton(label="Auto", hexpand=True)
@@ -586,6 +594,15 @@ class IrcamApp(Adw.Application):
             self.zoomview.set_visible(value)
         elif key == "histogram":
             self.histogram.set_visible(value)
+        elif key == "auto_range" and value:
+            import time as _t
+            self.engine.auto_range_next = _t.monotonic()
+            src = self.engine.source
+            if src and not src.can_switch_range:
+                self.log("The connected camera has no high temperature range.", "warning")
+            else:
+                self.log(f"Automatic range: HIGH at ≥ {self.settings['auto_range_up']:.0f} °C, "
+                         f"back to LOW at ≤ {self.settings['auto_range_down']:.0f} °C.", "success")
         elif key == "colorbar_visible":
             self.bar_box.set_visible(value)
         elif key == "tools_visible":

@@ -142,6 +142,8 @@ class Engine:
         self.trigger_done = [False] * 5
         self.auto_cal_next = 0.0
         self.drift_next = 0.0
+        self.range_busy = False
+        self.auto_range_next = 0.0
         self._kernel = None
         self._kernel_sigma = None
         self.alarm_sound_next = 0.0
@@ -163,6 +165,18 @@ class Engine:
         self.cal_fpa = source.cam.temp_fpa
         self.peak_max, self.peak_min = -1e9, 1e9
         self.high_range = False
+        try:
+            hr = source.current_high_range()
+        except Exception as e:  # noqa: BLE001 - the stream works without it
+            hr = None
+            self.log(f"Could not read the camera's temperature range: {e}", "warning")
+        if hr is not None:
+            self.high_range = hr
+            source.cam.range_flag = 2 if hr else 1
+            self.log(f"Camera is in the {'HIGH' if hr else 'LOW'} temperature range.")
+        self.notify("range", self.high_range)
+        self.range_busy = False
+        self.auto_range_next = time.monotonic() + 3.0
         self.alive = True
         self.running = True
         self.plot = []
@@ -211,14 +225,24 @@ class Engine:
             self.notify("busy", None)
         self.submit(run)
 
-    def toggle_range(self):
+    def toggle_range(self, manual=True):
         src = self.source
         if not src:
             return
         if not src.can_switch_range:
             self.log("The selected camera does not support a high temperature range.", "warning")
             return
-        target = not self.high_range
+        if manual and self.s["auto_range"]:
+            self.s["auto_range"] = False
+            self.log("Automatic range switching turned off (range chosen manually).", "warning")
+            self.notify("auto_range", False)
+        self.set_range(not self.high_range)
+
+    def set_range(self, target):
+        src = self.source
+        if not src or self.range_busy:
+            return
+        self.range_busy = True
 
         def run():
             self.notify("busy", "Switching temperature range…")
@@ -230,6 +254,8 @@ class Engine:
                 self.log(f"Range switch failed: {e}", "error")
             self.notify("busy", None)
             self.notify("range", self.high_range)
+            self.range_busy = False
+            self.auto_range_next = time.monotonic() + 3.0  # let the image settle
         self.submit(run)
 
     def apply_config(self, values):
@@ -497,6 +523,19 @@ class Engine:
                     self.notify("event", t["event"])
                     if t["once"]:
                         self.trigger_done[i] = True
+        # automatic temperature range (hysteresis between the two thresholds, in °C)
+        src = self.source
+        if (s["auto_range"] and src and src.live and src.can_switch_range and not self.range_busy
+                and now >= self.auto_range_next):
+            us, uo, _ = self.unit()
+            tmax_c = (r.tmax - uo) / us
+            up, down = s["auto_range_up"], min(s["auto_range_down"], s["auto_range_up"] - 1.0)
+            if not self.high_range and tmax_c >= up:
+                self.log(f"Maximum {tmax_c:.0f} °C ≥ {up:.0f} °C: switching to the HIGH range.")
+                self.set_range(True)
+            elif self.high_range and tmax_c <= down:
+                self.log(f"Maximum {tmax_c:.0f} °C ≤ {down:.0f} °C: switching back to the LOW range.")
+                self.set_range(False)
         # automatic calibration
         if self.source and self.source.live:
             if s["auto_cal"] and now >= self.auto_cal_next:

@@ -124,6 +124,10 @@ DEFAULTS = {
         {"enabled": False, "event": "None", "period": 60.0, "once": False} for _ in range(5)
     ],
     "triggers_running": False,
+    # temperature range (cameras with a high range)
+    "auto_range": False,
+    "auto_range_up": 140.0,     # °C: switch to the high range at/above this maximum temp
+    "auto_range_down": 120.0,   # °C: switch back to the low range at/below this maximum temp
     # calibration
     "auto_cal_period": 5.0,   # minutes
     "auto_cal": False,
