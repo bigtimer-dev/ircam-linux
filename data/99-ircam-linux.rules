@@ -1,0 +1,5 @@
+# IRCAM Thermal Viewer for Linux - raw USB access for camera features that bypass V4L2.
+# InfiRay / Thermal Master P2 Pro, TC001: vendor control channel (temperature range switching)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5830", MODE="0660", GROUP="video", TAG+="uaccess"
+# Thermal Master P3: the whole camera is driven over libusb
+SUBSYSTEM=="usb", ATTRS{idVendor}=="3474", ATTRS{idProduct}=="45a2", MODE="0660", GROUP="video", TAG+="uaccess"

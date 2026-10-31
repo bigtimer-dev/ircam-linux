@@ -1,0 +1,310 @@
+[
+ [
+  "Camera Default",
+  0.98
+ ],
+ [
+  "Perfect BlackBody",
+  1.0
+ ],
+ [
+  "Aluminum, Polished",
+  0.05
+ ],
+ [
+  "Aluminum, Rough Surface",
+  0.07
+ ],
+ [
+  "Aluminum, Strongly Oxidized",
+  0.25
+ ],
+ [
+  "Asbestos Board",
+  0.96
+ ],
+ [
+  "Asbestos Fabric",
+  0.78
+ ],
+ [
+  "Asbestos Paper",
+  0.94
+ ],
+ [
+  "Asbestos Slate",
+  0.96
+ ],
+ [
+  "Brass, Dull, Tarnished",
+  0.22
+ ],
+ [
+  "Brass, Polished",
+  0.03
+ ],
+ [
+  "Brick, Common",
+  0.85
+ ],
+ [
+  "Brick, Glazed, Rough",
+  0.85
+ ],
+ [
+  "Brick, Refractory, Rough",
+  0.94
+ ],
+ [
+  "Bronze, Porous, Rough",
+  0.55
+ ],
+ [
+  "Bronze, Polished",
+  0.1
+ ],
+ [
+  "Carbon, Purified",
+  0.8
+ ],
+ [
+  "Cast Iron, Rough Casting",
+  0.81
+ ],
+ [
+  "Cast Iron, Polished",
+  0.21
+ ],
+ [
+  "Charcoal, Powdered",
+  0.96
+ ],
+ [
+  "Chromium, Polished",
+  0.1
+ ],
+ [
+  "Clay, Fired",
+  0.91
+ ],
+ [
+  "Concrete",
+  0.54
+ ],
+ [
+  "Copper, Polished",
+  0.01
+ ],
+ [
+  "Copper, Commercial Burnished",
+  0.07
+ ],
+ [
+  "Copper, Oxidized",
+  0.65
+ ],
+ [
+  "Copper, Oxidized To Black",
+  0.88
+ ],
+ [
+  "Electrical Tape, Black Plastic",
+  0.95
+ ],
+ [
+  "Enamel",
+  0.9
+ ],
+ [
+  "Formica",
+  0.93
+ ],
+ [
+  "Frozen Soil",
+  0.93
+ ],
+ [
+  "Glass",
+  0.92
+ ],
+ [
+  "Glass, Frosted",
+  0.96
+ ],
+ [
+  "Gold, Polished",
+  0.02
+ ],
+ [
+  "Ice",
+  0.97
+ ],
+ [
+  "Iron, Hot Rolled",
+  0.77
+ ],
+ [
+  "Iron, Oxidized",
+  0.74
+ ],
+ [
+  "Iron, Sheet Galvanized, Burnished",
+  0.23
+ ],
+ [
+  "Iron, Sheet, Galvanized, Oxidized",
+  0.28
+ ],
+ [
+  "Iron, Shiny, Etched",
+  0.16
+ ],
+ [
+  "Iron, Wrought, Polished",
+  0.28
+ ],
+ [
+  "Lacquer, Bakelite",
+  0.93
+ ],
+ [
+  "Lacquer, Black, Dull",
+  0.97
+ ],
+ [
+  "Lacquer, Black, Shiny",
+  0.87
+ ],
+ [
+  "Lacquer, White",
+  0.87
+ ],
+ [
+  "Lampblack",
+  0.96
+ ],
+ [
+  "Lead, Gray",
+  0.28
+ ],
+ [
+  "Lead, Oxidized",
+  0.63
+ ],
+ [
+  "Lead, Red, Powdered",
+  0.93
+ ],
+ [
+  "Lead, Shiny",
+  0.08
+ ],
+ [
+  "Mercury, Pure",
+  0.1
+ ],
+ [
+  "Nickel, On Cast Iron",
+  0.05
+ ],
+ [
+  "Nickel, Pure Polished",
+  0.05
+ ],
+ [
+  "Paint, Silver Finish",
+  0.31
+ ],
+ [
+  "Paint, Oil, Average",
+  0.94
+ ],
+ [
+  "Paper, Black, Shiny",
+  0.9
+ ],
+ [
+  "Paper, Black, Dull ",
+  0.94
+ ],
+ [
+  "Paper, White",
+  0.9
+ ],
+ [
+  "Platinum, Pure, Polished",
+  0.08
+ ],
+ [
+  "Porcelain, Glazed",
+  0.92
+ ],
+ [
+  "Quartz",
+  0.93
+ ],
+ [
+  "Rubber",
+  0.93
+ ],
+ [
+  "Shellac, Black, Dull",
+  0.91
+ ],
+ [
+  "Shellac, Black, Shiny",
+  0.82
+ ],
+ [
+  "Snow",
+  0.8
+ ],
+ [
+  "Steel, Galvanized",
+  0.28
+ ],
+ [
+  "Steel, Oxidized Strongly",
+  0.88
+ ],
+ [
+  "Steel, Rolled Freshly ",
+  0.24
+ ],
+ [
+  "Steel, Rough Surface",
+  0.96
+ ],
+ [
+  "Steel, Rusty Red",
+  0.69
+ ],
+ [
+  "Steel, Sheet, Nickelplated",
+  0.11
+ ],
+ [
+  "Steel, Sheet, Rolled",
+  0.56
+ ],
+ [
+  "Tar Paper",
+  0.92
+ ],
+ [
+  "Tin, Burnished",
+  0.05
+ ],
+ [
+  "Tungsten",
+  0.05
+ ],
+ [
+  "Water",
+  0.98
+ ],
+ [
+  "Zinc, Sheet",
+  0.2
+ ]
+]

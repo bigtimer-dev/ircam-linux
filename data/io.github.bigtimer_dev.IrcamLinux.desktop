@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=IRCAM Thermal Viewer (Native)
+GenericName=Thermal Camera Viewer
+Comment=Live view, measurement and recording for USB thermal cameras (InfiRay, Thermal Master, TOPDON, HTI…)
+Exec=@BIN@ %F
+Icon=io.github.bigtimer_dev.IrcamLinux
+Terminal=false
+Categories=Graphics;Science;Engineering;Video;
+Keywords=thermal;infrared;camera;infiray;p2pro;topdon;ircam;
+StartupWMClass=io.github.bigtimer_dev.IrcamLinux
