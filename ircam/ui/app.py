@@ -128,8 +128,7 @@ class IrcamApp(Adw.Application):
                 self._stop_screen_capture()
         elif kind == "range":
             self.btn_range.set_tooltip_text(f"Temperature range: {'HIGH' if payload else 'LOW'} (T)")
-        elif kind == "auto_range":
-            self.set_setting("auto_range", payload)
+            self._sync_range_buttons()
         return False
 
     def run_event(self, ev):
@@ -275,6 +274,11 @@ class IrcamApp(Adw.Application):
         win.add_controller(keys)
         return win
 
+    def _sync_range_buttons(self):
+        if hasattr(self, "range_low"):
+            b = self.range_high if self.engine.high_range else self.range_low
+            self._sync_toggle(b, True)
+
     def _tb(self, icon, tip, cb, toggle=False):
         b = Gtk.ToggleButton(icon_name=icon) if toggle else Gtk.Button(icon_name=icon)
         b.set_tooltip_text(tip)
@@ -384,12 +388,17 @@ class IrcamApp(Adw.Application):
         check("sharpening", "Image sharpening", "Y")
         check("focus_assist", "Focus assist")
         check("label_background", "Label backgrounds")
-        heading("TEMPERATURE RANGE")
-        check("auto_range", "Automatic range switching")
-        hint = Gtk.Label(label="High range above the set maximum\n(thresholds in Settings → Camera)", xalign=0)
-        hint.add_css_class("dim-label")
-        hint.add_css_class("caption")
-        box.append(hint)
+        heading("TEMPERATURE RANGE  (T)")
+        row = Gtk.Box(css_classes=["linked"])
+        self.range_low = Gtk.ToggleButton(label="Low", hexpand=True, active=True,
+                                          tooltip_text="About −20…150 °C, most precise")
+        self.range_high = Gtk.ToggleButton(label="High", group=self.range_low, hexpand=True,
+                                           tooltip_text="Up to about 550–600 °C, for hot objects")
+        for b, hi in ((self.range_low, False), (self.range_high, True)):
+            b._cb = b.connect("toggled", lambda x, h=hi: x.get_active() and self.engine.set_range(h))
+            row.append(b)
+        self.range_box = row
+        box.append(row)
         heading("COLOR BAR")
         row = Gtk.Box(spacing=0, css_classes=["linked"])
         self.bar_auto = Gtk.ToggleButton(label="Auto", hexpand=True)
@@ -505,6 +514,9 @@ class IrcamApp(Adw.Application):
             b.set_sensitive(connected)
         self.btn_cal.set_sensitive(bool(live and src.can_calibrate))
         self.btn_range.set_sensitive(bool(live and src.can_switch_range))
+        if hasattr(self, "range_box"):
+            self.range_box.set_sensitive(bool(live and src.can_switch_range))
+            self._sync_range_buttons()
         self.btn_run.set_icon_name("media-playback-pause-symbolic" if self.engine.running else "media-playback-start-symbolic")
         self.btn_single.set_sensitive(connected and not self.engine.running)
         if hasattr(self, "playback"):
@@ -594,15 +606,7 @@ class IrcamApp(Adw.Application):
             self.zoomview.set_visible(value)
         elif key == "histogram":
             self.histogram.set_visible(value)
-        elif key == "auto_range" and value:
-            import time as _t
-            self.engine.auto_range_next = _t.monotonic()
-            src = self.engine.source
-            if src and not src.can_switch_range:
-                self.log("The connected camera has no high temperature range.", "warning")
-            else:
-                self.log(f"Automatic range: HIGH at ≥ {self.settings['auto_range_up']:.0f} °C, "
-                         f"back to LOW at ≤ {self.settings['auto_range_down']:.0f} °C.", "success")
+
         elif key == "colorbar_visible":
             self.bar_box.set_visible(value)
         elif key == "tools_visible":

@@ -159,23 +159,15 @@ class Files(unittest.TestCase):
         time.sleep(0.1)
         self.assertEqual(self.e.latest.alarms[:2], [True, False])
 
-    def test_auto_range_hysteresis(self):
-        self.s["auto_range"] = True
-        self.s["auto_range_up"], self.s["auto_range_down"] = 60.0, 40.0  # demo max is about 70 °C
+    def test_manual_range_selection(self):
         self.e.connect(DemoSource())
-        self.e.auto_range_next = 0.0
-        t0 = time.time()
-        while not self.e.high_range and time.time() - t0 < 3:
-            time.sleep(0.05)
+        self._wait()
+        self.e.set_range(True)
+        time.sleep(0.3)
         self.assertTrue(self.e.high_range)
-        self.s["auto_range_up"], self.s["auto_range_down"] = 200.0, 100.0
-        self.e.auto_range_next = 0.0
-        t0 = time.time()
-        while self.e.high_range and time.time() - t0 < 3:
-            time.sleep(0.05)
+        self.e.toggle_range()
+        time.sleep(0.3)
         self.assertFalse(self.e.high_range)
-        self.e.toggle_range()          # a manual switch turns automatic mode off
-        self.assertFalse(self.s["auto_range"])
 
 
 class Sources(unittest.TestCase):

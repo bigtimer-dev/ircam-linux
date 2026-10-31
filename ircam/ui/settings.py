@@ -112,20 +112,6 @@ class SettingsDialog(Adw.PreferencesDialog):
                      lambda v: self.app.set_unit(units[["Celsius (°C)", "Fahrenheit (°F)", "Kelvin (K)"].index(v)])))
         page.add(g)
 
-        g = Adw.PreferencesGroup(title="Temperature Range",
-                                 description="The low range is more precise; the high range reaches hotter objects. "
-                                             "Automatic mode switches on the maximum temperature in view, "
-                                             "with a gap between the two limits so it doesn't flip back and forth. "
-                                             "Choosing a range by hand (T) turns automatic mode off.")
-        self.auto_range_row = _switch("Automatic range switching", s["auto_range"],
-                                      lambda v: self.app.set_setting("auto_range", v))
-        g.add(self.auto_range_row)
-        g.add(_spin("Switch to HIGH range at (°C)", 20, 600, 1, s["auto_range_up"],
-                    lambda v: self._set("auto_range_up", v), 0, "When the hottest point reaches this"))
-        g.add(_spin("Back to LOW range at (°C)", 0, 600, 1, s["auto_range_down"],
-                    lambda v: self._set("auto_range_down", v), 0, "When the hottest point cools to this"))
-        page.add(g)
-
         g = Adw.PreferencesGroup(title="Temperature Configuration",
                                  description="Object parameters used for the temperature calculation "
                                              "(written to the camera for InfiRay T2/T3 models).")

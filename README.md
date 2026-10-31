@@ -66,8 +66,7 @@ The camera is found automatically by its V4L2 name or USB id. You can also choos
 | 5 temperature alarms with sound and trigger actions | ✓ |
 | 5 periodic triggers | ✓ |
 | Calibration: manual, periodic, on drift | ✓ (cameras that support it) |
-| High/low temperature range | ✓ pools 1/3/5, **plus P2 Pro** (new on Linux) |
-| Automatic range switching | **new**: goes to the high range when the hottest point reaches a set limit (default 140 °C) and back at a lower limit (120 °C); the active range is read from the P2 Pro on connect |
+| High/low temperature range | ✓ pools 1/3/5, **plus P2 Pro** (new on Linux); Low/High selector, T key or toolbar; the P2 Pro's active range is read on connect |
 | Camera temperature configuration (emissivity, ambient, …) | ✓ |
 | Emissivity table (double-click applies) | ✓ |
 | 3D surface plot (fill/points/lines, rotate, pan, zoom, snapshot) | ✓ cairo renderer |
