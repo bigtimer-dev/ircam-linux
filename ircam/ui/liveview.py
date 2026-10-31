@@ -508,7 +508,7 @@ class LiveView(Gtk.DrawingArea):
             self.queue_draw()
         add_action(g, "delete", delete, param="s")
         for key in ("invert_palette", "invert_dual", "invert_back", "label_background", "wheel_rotates",
-                    "focus_assist", "split_view", "colorbar_visible", "tools_visible"):
+                    "focus_assist", "split_view", "colorbar_visible", "tools_visible", "plot_visible"):
             add_action(g, key, lambda v, k=key: app.set_setting(k, v.get_boolean()), GLib.Variant.new_boolean(s[key]))
         add_action(g, "rotcw", lambda: app.rotate(90))
         add_action(g, "rotccw", lambda: app.rotate(-90))
@@ -548,6 +548,7 @@ class LiveView(Gtk.DrawingArea):
         view.append("Split View (Zoom Window)", "lv.split_view")
         view.append("Show Color Bar And Histogram", "lv.colorbar_visible")
         view.append("Show Tools Panel", "lv.tools_visible")
+        view.append("Show 2D Temperature Plot  (G)", "lv.plot_visible")
         view.append("Label Backgrounds", "lv.label_background")
         m.append_section(None, view)
         pal = Gio.Menu()

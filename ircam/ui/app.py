@@ -45,6 +45,7 @@ HOTKEYS = [
     ("V", "Start / stop video recording"),
     ("X", "Toggle enhanced resolution (smooth scaling)"),
     ("Y", "Toggle image sharpening"),
+    ("G", "Show / hide the 2D temperature plot (Linux addition)"),
     ("Ctrl+,", "Settings"),
 ]
 
@@ -105,7 +106,7 @@ class IrcamApp(Adw.Application):
             if self.settings["histogram"]:
                 self.histogram.queue_draw()
         now = time.monotonic()
-        if now - self._last_plot > 0.1:
+        if self.settings["plot_visible"] and now - self._last_plot > 0.1:
             self._last_plot = now
             self.plot.queue_draw()
         return False
@@ -256,6 +257,8 @@ class IrcamApp(Adw.Application):
                 self._vpan_set = True
                 p.set_position(int(p.get_property("max-position") * 0.7))
         vpan.connect("notify::max-position", place)
+        self.vpan = vpan
+        self.plot.set_visible(s["plot_visible"])
         self.tools = self._tools_panel()
         self.tools.set_visible(s["tools_visible"])
         body = Gtk.Box()
@@ -382,6 +385,7 @@ class IrcamApp(Adw.Application):
         heading("DISPLAY")
         check("histogram", "Histogram", "6")
         check("colorbar_visible", "Color bar")
+        check("plot_visible", "2D temperature plot", "G")
         check("fixed_aspect", "Fixed aspect ratio", "A")
         check("ultra_resolution", "ULTRA resolution", "U")
         check("enhanced_resolution", "Enhanced resolution", "X")
@@ -548,7 +552,7 @@ class IrcamApp(Adw.Application):
         eng = self.engine
         toggles = {"1": "track_max", "2": "track_min", "3": "track_center", "6": "histogram", "8": "track_cursor",
                    "9": "dual_palette_box", "A": "fixed_aspect", "U": "ultra_resolution", "X": "enhanced_resolution",
-                   "Y": "sharpening"}
+                   "Y": "sharpening", "G": "plot_visible"}
         if k in toggles:
             self.set_setting(toggles[k], not self.settings[toggles[k]])
         elif k == "4":
@@ -597,7 +601,7 @@ class IrcamApp(Adw.Application):
         if hasattr(self, "live"):
             self.live.sync_action(key) if key in ("invert_palette", "invert_dual", "invert_back", "label_background",
                                                   "wheel_rotates", "focus_assist", "split_view", "colorbar_visible",
-                                                  "tools_visible") else None
+                                                  "tools_visible", "plot_visible") else None
         if key == "dual_palette_box" and value:
             self.live.ensure_dual_rect()
         elif key == "split_view":
@@ -609,6 +613,11 @@ class IrcamApp(Adw.Application):
 
         elif key == "colorbar_visible":
             self.bar_box.set_visible(value)
+        elif key == "plot_visible":
+            self.plot.set_visible(value)
+            if value:
+                # give the plot about 30 % of the height when it appears
+                GLib.idle_add(lambda: self.vpan.set_position(int(self.vpan.get_height() * 0.7)) and False)
         elif key == "tools_visible":
             self.tools.set_visible(value)
         elif key in ("palette", "dual_palette", "back_palette") and key in getattr(self, "pal_dd", {}):

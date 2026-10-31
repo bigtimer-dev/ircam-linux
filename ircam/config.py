@@ -52,6 +52,7 @@ DEFAULTS = {
     "colorbar_wheel_step": 1.0,
     "colorbar_center_arrow": True,
     "colorbar_visible": True,
+    "plot_visible": False,       # 2D temperature plot under the live view
     # histogram
     "histogram": False,
     "histogram_bins": 64,

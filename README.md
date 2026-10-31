@@ -57,7 +57,7 @@ The camera is found automatically by its V4L2 name or USB id. You can also choos
 | Histogram (frame / zoom / ROI n / line n) | ✓ |
 | ULTRA resolution, enhanced resolution, sharpening, focus assist | ✓ |
 | °C / °F / K | ✓ |
-| 2D plot (10 data sets, ticks, grid, cursor label) | ✓ |
+| 2D plot (10 data sets, ticks, grid, cursor label) | ✓ hidden by default; show it with the tools-panel checkbox, the right-click menu or G |
 | CSV data logging (`DataLogSession_*.txt`) | ✓ same format |
 | Full-frame temperature data (`FrameTempData_*.txt`) | ✓ same format |
 | Snapshots (`Snapshot_*.png` + `SnapShotRAW_*.png`) | ✓ RAW PNG is byte-compatible with the Windows app |
