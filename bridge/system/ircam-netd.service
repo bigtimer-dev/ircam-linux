@@ -1,0 +1,12 @@
+[Unit]
+Description=Wireless P2 Pro bridge: WiFi manager and setup page
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/ircam-bridge/ircam_netd.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -9,6 +9,7 @@ subscribes from its UDP socket to port 47800; frames are sent back to that socke
     python3 ircam_bridge.py --demo        # simulated P2 Pro, no camera needed
 """
 import argparse
+import json
 import logging
 import os
 import secrets
@@ -199,9 +200,11 @@ class Bridge:
         self.ctrl_port = self.tcp.getsockname()[1]
 
     # threads -------------------------------------------------------------------------
-    def start(self):
+    def start(self, status_file=None):
         for fn in (self._capture_loop, self._send_loop, self._sub_loop, self._accept_loop):
             threading.Thread(target=fn, daemon=True, name=fn.__name__).start()
+        if status_file:
+            threading.Thread(target=self._status_file_loop, args=(status_file,), daemon=True).start()
         log.info("listening: control tcp/%d, data udp/%d", self.ctrl_port, self.data_port)
 
     def stop(self):
@@ -301,6 +304,26 @@ class Bridge:
                 hangup(old)
             threading.Thread(target=self._serve, args=(conn, addr), daemon=True).start()
 
+    def status(self):
+        t = self.cap_times
+        fps = (len(t) - 1) / ((t[-1] - t[0]) / 1e6) if len(t) > 1 and t[-1] > t[0] else 0.0
+        return {"camera_ok": self.cam_ok, "camera": self.cam.model, "cam_fps": round(fps, 1),
+                "viewer": self.client_addr[0] if (self.streaming and self.client_addr) else None,
+                "sent": self.sent_frames, "skipped": self.skipped, "rssi_dbm": wifi_rssi(self.iface),
+                "cpu_temp": cpu_temp(), "battery_pct": pisugar_battery(), "bridge": __version__}
+
+    def _status_file_loop(self, path):
+        """Publish the status for the setup page (it must not take over the viewer slot)."""
+        path = Path(path)
+        tmp = path.with_suffix(".tmp")
+        while self.alive:
+            try:
+                tmp.write_text(json.dumps({**self.status(), "time": time.time()}))
+                os.replace(tmp, path)
+            except OSError as e:
+                log.debug("status file: %s", e)
+            time.sleep(2)
+
     # control -------------------------------------------------------------------------
     def _serve(self, conn, addr):
         log.info("viewer connected: %s", addr[0])
@@ -366,11 +389,7 @@ class Bridge:
             log.info("range set to %s", "high" if high else "low")
             return {"ok": True, "high": high}
         if cmd == "status":
-            t = self.cap_times
-            fps = (len(t) - 1) / ((t[-1] - t[0]) / 1e6) if len(t) > 1 and t[-1] > t[0] else 0.0
-            return {"ok": True, "camera_ok": self.cam_ok, "cam_fps": round(fps, 1),
-                    "sent": self.sent_frames, "skipped": self.skipped, "rssi_dbm": wifi_rssi(self.iface),
-                    "cpu_temp": cpu_temp(), "battery_pct": pisugar_battery()}
+            return {"ok": True, **self.status()}
         return {"ok": False, "error": f"unknown command {cmd!r}"}
 
 
@@ -382,6 +401,7 @@ def main():
     ap.add_argument("--data-port", type=int, default=P.DATA_PORT)
     ap.add_argument("--ctrl-port", type=int, default=P.CTRL_PORT)
     ap.add_argument("--iface", default="wlan0", help="WiFi interface for the RSSI readout")
+    ap.add_argument("--status-file", help="write a JSON status here every 2 s (for the setup page)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
@@ -389,7 +409,7 @@ def main():
                         else "%(asctime)s %(levelname)s %(message)s")
     cam = DemoCamera() if a.demo else RealCamera(a.device)
     br = Bridge(cam, a.bind, a.data_port, a.ctrl_port, a.iface)
-    br.start()
+    br.start(a.status_file)
     try:
         while True:
             time.sleep(3600)
