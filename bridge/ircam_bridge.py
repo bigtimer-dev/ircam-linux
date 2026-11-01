@@ -1,0 +1,403 @@
+#!/usr/bin/env python3
+"""ircam-bridge: streams an InfiRay P2 Pro's temperature data over WiFi (IRW1 protocol).
+
+Runs on the Raspberry Pi Zero 2 W the camera is plugged into (or on any Linux box for
+testing). The viewer (ircam-linux, "InfiRay P2 Pro (Wireless)") connects to TCP 47801 and
+subscribes from its UDP socket to port 47800; frames are sent back to that socket.
+
+    python3 ircam_bridge.py               # real camera, auto-detected
+    python3 ircam_bridge.py --demo        # simulated P2 Pro, no camera needed
+"""
+import argparse
+import logging
+import os
+import secrets
+import socket
+import sys
+import threading
+import time
+from pathlib import Path
+
+here = Path(__file__).resolve().parent
+for p in (here, here.parent):          # installed (/opt/ircam-bridge) or repo checkout
+    if (p / "ircam").is_dir():
+        sys.path.insert(0, str(p))
+        break
+
+import numpy as np  # noqa: E402
+
+from ircam.net import protocol as P  # noqa: E402
+
+__version__ = "0.1.0"
+log = logging.getLogger("ircam-bridge")
+FRAME_BYTES = P.WIDTH * P.FRAME_ROWS * 2
+SUB_TIMEOUT = 3.0
+
+
+def now_us():
+    return time.monotonic_ns() // 1000
+
+
+def hangup(sock):
+    """Close a socket another thread may be blocked on (close() alone sends no FIN then)."""
+    if sock is None:
+        return
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
+# ------------------------------------------------------------------------------ cameras
+class RealCamera:
+    """The P2 Pro through V4L2 plus its vendor channel for range switching."""
+    model = "InfiRay P2 Pro"
+
+    def __init__(self, device="auto"):
+        self.device = device
+        self.dev = None
+        self.p2 = None
+        self.serial = ""
+
+    def open(self):
+        from ircam import cameras as C, v4l2
+        from ircam.sources import find_v4l2_device
+        model = C.MODEL_BY_NAME["InfiRay Or Thermal Master P2Pro"]
+        found, devs = find_v4l2_device(model, self.device)
+        if not found:
+            raise OSError("P2 Pro not found (video devices: %s)" % (", ".join(d.path for d in devs) or "none"))
+        self.dev = v4l2.V4L2Camera(found.path)
+        self.dev.set_format(P.WIDTH, P.FRAME_ROWS, v4l2.YUYV)
+        if (self.dev.width, self.dev.height) != (P.WIDTH, P.FRAME_ROWS):
+            raise OSError(f"camera delivers {self.dev.width}x{self.dev.height}, expected 256x384")
+        self.dev.set_fps(25)
+        self.serial = found.card
+        try:
+            from ircam.p2pro import P2ProControl
+            self.p2 = P2ProControl()
+        except Exception as e:  # noqa: BLE001 - streaming works without it
+            log.warning("vendor channel unavailable, no range switching: %s", e)
+        self.dev.start()
+        log.info("camera open: %s", found.label())
+
+    @property
+    def can_range(self):
+        return self.p2 is not None
+
+    def read(self):
+        raw = self.dev.read(1.0, FRAME_BYTES)
+        if raw is None or len(raw) != FRAME_BYTES:
+            return None
+        return np.frombuffer(raw, "<u2").reshape(P.FRAME_ROWS, P.WIDTH)
+
+    def high_range(self):
+        return None if self.p2 is None else not self.p2.high_gain()
+
+    def set_high_range(self, high):
+        self.p2.set_high_gain(not high)       # high gain = low temperature range
+
+    def close(self):
+        for o in (self.dev, self.p2):
+            try:
+                if o:
+                    o.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self.dev = self.p2 = None
+
+
+class DemoCamera:
+    """The app's simulated P2 Pro, for testing without hardware."""
+    model = "Demo P2 Pro"
+    can_range = True
+    serial = "demo"
+
+    def open(self):
+        from ircam.sources import DemoSource
+        self.src = DemoSource()
+        self.src.open(lambda *a: None)
+        self._high = False
+
+    def read(self):
+        return np.frombuffer(self.src.read(), "<u2").reshape(P.FRAME_ROWS, P.WIDTH)
+
+    def high_range(self):
+        return self._high
+
+    def set_high_range(self, high):
+        self._high = bool(high)
+
+    def close(self):
+        pass
+
+
+# ------------------------------------------------------------------------------ system info
+def wifi_rssi(iface="wlan0"):
+    try:
+        for line in Path("/proc/net/wireless").read_text().splitlines()[2:]:
+            name, rest = line.split(":", 1)
+            if name.strip() == iface:
+                return int(float(rest.split()[2]))
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def cpu_temp():
+    try:
+        return int(Path("/sys/class/thermal/thermal_zone0/temp").read_text()) / 1000
+    except (OSError, ValueError):
+        return None
+
+
+def pisugar_battery():
+    """Battery % from the PiSugar power manager, if installed."""
+    try:
+        with socket.create_connection(("127.0.0.1", 8423), timeout=0.2) as s:
+            s.sendall(b"get battery\n")
+            return round(float(s.recv(64).decode().split(":")[1]), 1)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+# ------------------------------------------------------------------------------ bridge
+class Bridge:
+    def __init__(self, cam, bind="0.0.0.0", data_port=P.DATA_PORT, ctrl_port=P.CTRL_PORT, iface="wlan0"):
+        self.cam = cam
+        self.iface = iface
+        self.alive = True
+        self.cam_ok = False
+        self.cam_lock = threading.Lock()
+        self.cond = threading.Condition()
+        self.latest = None            # (frame rows, ts_us, frame_id)
+        self.frame_id = 0
+        self.cap_times = []
+        self.high = False
+        # session
+        self.session = None           # dict: token, codec, full_frame, fps_limit
+        self.client_addr = None
+        self.last_sub = 0.0
+        self.streaming = False
+        self.sent_frames = self.skipped = 0
+        self.ctrl_conn = None
+        # sockets
+        self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.udp.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1 << 20)
+        P.set_video_tos(self.udp)
+        self.udp.bind((bind, data_port))
+        self.udp.settimeout(1.0)
+        self.tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.tcp.bind((bind, ctrl_port))
+        self.tcp.listen(2)
+        self.tcp.settimeout(1.0)
+        self.data_port = self.udp.getsockname()[1]
+        self.ctrl_port = self.tcp.getsockname()[1]
+
+    # threads -------------------------------------------------------------------------
+    def start(self):
+        for fn in (self._capture_loop, self._send_loop, self._sub_loop, self._accept_loop):
+            threading.Thread(target=fn, daemon=True, name=fn.__name__).start()
+        log.info("listening: control tcp/%d, data udp/%d", self.ctrl_port, self.data_port)
+
+    def stop(self):
+        self.alive = False
+        with self.cond:
+            self.cond.notify_all()
+        for s in (self.ctrl_conn, self.tcp, self.udp):
+            hangup(s)
+        self.cam.close()
+
+    def _capture_loop(self):
+        while self.alive:
+            try:
+                with self.cam_lock:
+                    self.cam.open()
+                    hr = self.cam.high_range() if self.cam.can_range else None
+                self.high = bool(hr)
+                self.cam_ok = True
+                fails = 0
+                while self.alive:
+                    rows = self.cam.read()
+                    if rows is None:
+                        fails += 1
+                        if fails > 5:
+                            raise OSError("camera stopped delivering frames")
+                        continue
+                    fails = 0
+                    t = now_us()
+                    with self.cond:
+                        self.frame_id = (self.frame_id + 1) & 0xFFFFFFFF
+                        self.latest = (rows, t, self.frame_id)
+                        self.cap_times = [x for x in self.cap_times[-60:] if t - x < 2_000_000] + [t]
+                        self.cond.notify_all()
+            except Exception as e:  # noqa: BLE001 - keep serving, retry the camera
+                if self.alive:
+                    log.warning("camera: %s; retrying in 2 s", e)
+            self.cam_ok = False
+            with self.cam_lock:
+                self.cam.close()
+            time.sleep(2)
+
+    def _send_loop(self):
+        last_id, last_sent = None, 0.0
+        while self.alive:
+            with self.cond:
+                self.cond.wait_for(lambda: not self.alive or (self.latest and self.latest[2] != last_id), 1.0)
+                item = self.latest
+            if not self.alive or item is None or item[2] == last_id:
+                continue
+            rows, ts, fid = item
+            if last_id is not None and ((fid - last_id) & 0xFFFFFFFF) > 1 and self.streaming:
+                self.skipped += ((fid - last_id) & 0xFFFFFFFF) - 1
+            last_id = fid
+            sess, addr = self.session, self.client_addr
+            if not (self.streaming and sess and addr):
+                continue
+            if time.monotonic() - self.last_sub > SUB_TIMEOUT:
+                log.info("client %s stopped subscribing; pausing stream", addr)
+                self.streaming = False
+                continue
+            lim = sess["fps_limit"]
+            if lim and time.monotonic() - last_sent < 1.0 / lim - 0.004:
+                continue
+            last_sent = time.monotonic()
+            data = rows if sess["full_frame"] else rows[P.TEMP_ROW0:]
+            flags = (P.FLAG_HIGH_RANGE if self.high else 0) | (P.FLAG_FULL_FRAME if sess["full_frame"] else 0)
+            try:
+                for dg in P.packetize(data, fid, ts, sess["codec"], flags):
+                    self.udp.sendto(dg, addr)
+                self.sent_frames += 1
+            except OSError as e:
+                log.debug("send: %s", e)
+
+    def _sub_loop(self):
+        while self.alive:
+            try:
+                data, addr = self.udp.recvfrom(256)
+            except OSError:
+                continue
+            tok = P.parse_subscribe(data)
+            sess = self.session
+            if tok is not None and sess and secrets.compare_digest(tok, sess["token"]):
+                if addr != self.client_addr:
+                    log.info("streaming to %s:%d", *addr)
+                self.client_addr = addr
+                self.last_sub = time.monotonic()
+
+    def _accept_loop(self):
+        while self.alive:
+            try:
+                conn, addr = self.tcp.accept()
+            except OSError:
+                continue
+            old, self.ctrl_conn = self.ctrl_conn, conn
+            if old:                          # one viewer at a time: the newest wins
+                log.info("new viewer %s replaces the previous one", addr[0])
+                hangup(old)
+            threading.Thread(target=self._serve, args=(conn, addr), daemon=True).start()
+
+    # control -------------------------------------------------------------------------
+    def _serve(self, conn, addr):
+        log.info("viewer connected: %s", addr[0])
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        conn.settimeout(SUB_TIMEOUT + 2)
+        rd = P.LineReader(conn)
+        try:
+            while self.alive:
+                msg = rd.read()
+                reply = self._handle(msg)
+                reply["id"] = msg.get("id")
+                P.send_msg(conn, reply)
+        except (OSError, P.ProtocolError) as e:
+            log.info("viewer %s gone (%s)", addr[0], e)
+        finally:
+            if self.ctrl_conn is conn:
+                self.streaming = False
+                self.session = None
+                self.client_addr = None
+                self.ctrl_conn = None
+            hangup(conn)
+
+    def _handle(self, msg):
+        cmd = msg.get("cmd")
+        if cmd == "hello":
+            self.session = {"token": secrets.token_hex(8), "codec": P.CODEC_ZLIB, "full_frame": False, "fps_limit": 0}
+            self.streaming = False
+            self.client_addr = None
+            return {"ok": True, "proto": P.VERSION, "bridge": __version__, "model": self.cam.model,
+                    "serial": self.cam.serial, "camera_ok": self.cam_ok, "width": P.WIDTH,
+                    "height": P.FRAME_ROWS, "temp_row0": P.TEMP_ROW0, "codecs": list(P.CODECS),
+                    "high_range": bool(self.cam.can_range), "data_port": self.data_port,
+                    "token": self.session["token"]}
+        if self.session is None:
+            return {"ok": False, "error": "send hello first"}
+        if cmd == "start":
+            codec = int(msg.get("codec", P.CODEC_ZLIB))
+            if codec not in P.CODECS:
+                return {"ok": False, "error": f"unsupported codec {codec}"}
+            self.session.update(codec=codec, full_frame=bool(msg.get("full_frame", False)),
+                                fps_limit=float(msg.get("fps_limit", 0) or 0))
+            self.streaming = True
+            self.last_sub = time.monotonic()
+            return {"ok": True}
+        if cmd == "stop":
+            self.streaming = False
+            return {"ok": True}
+        if cmd == "ping":
+            return {"ok": True, "t": msg.get("t"), "bridge_us": now_us()}
+        if cmd == "get_range":
+            if not self.cam.can_range:
+                return {"ok": False, "error": "range switching unavailable"}
+            with self.cam_lock:
+                self.high = bool(self.cam.high_range())
+            return {"ok": True, "high": self.high}
+        if cmd == "set_range":
+            if not self.cam.can_range:
+                return {"ok": False, "error": "range switching unavailable"}
+            high = bool(msg.get("high"))
+            with self.cam_lock:
+                self.cam.set_high_range(high)
+            self.high = high
+            log.info("range set to %s", "high" if high else "low")
+            return {"ok": True, "high": high}
+        if cmd == "status":
+            t = self.cap_times
+            fps = (len(t) - 1) / ((t[-1] - t[0]) / 1e6) if len(t) > 1 and t[-1] > t[0] else 0.0
+            return {"ok": True, "camera_ok": self.cam_ok, "cam_fps": round(fps, 1),
+                    "sent": self.sent_frames, "skipped": self.skipped, "rssi_dbm": wifi_rssi(self.iface),
+                    "cpu_temp": cpu_temp(), "battery_pct": pisugar_battery()}
+        return {"ok": False, "error": f"unknown command {cmd!r}"}
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Wireless bridge for the InfiRay P2 Pro (IRW1).")
+    ap.add_argument("--demo", action="store_true", help="simulated camera, no hardware")
+    ap.add_argument("--device", default="auto", help="V4L2 device (default: auto-detect)")
+    ap.add_argument("--bind", default="0.0.0.0")
+    ap.add_argument("--data-port", type=int, default=P.DATA_PORT)
+    ap.add_argument("--ctrl-port", type=int, default=P.CTRL_PORT)
+    ap.add_argument("--iface", default="wlan0", help="WiFi interface for the RSSI readout")
+    ap.add_argument("-v", "--verbose", action="store_true")
+    a = ap.parse_args()
+    logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
+                        format="%(levelname)s %(message)s" if os.environ.get("INVOCATION_ID")
+                        else "%(asctime)s %(levelname)s %(message)s")
+    cam = DemoCamera() if a.demo else RealCamera(a.device)
+    br = Bridge(cam, a.bind, a.data_port, a.ctrl_port, a.iface)
+    br.start()
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        br.stop()
+
+
+if __name__ == "__main__":
+    main()

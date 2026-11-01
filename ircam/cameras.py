@@ -17,6 +17,7 @@ POOL_6 = 6  # Thermal Master THOR001 - "H264"-labelled raw 16-bit stream (K*10)
 SNAPSHOT_ANALYSIS = "Snapshot Analysis Mode"
 RECORDING_ANALYSIS = "Recording Analysis Mode"
 DEMO_CAMERA = "Demo Camera (Simulated P2 Pro)"
+WIRELESS_P2PRO = "InfiRay P2 Pro (Wireless)"
 
 # Timings (ms), RMH_SupportedIRCameras_Resources.h
 SHUTTER_CLOSE_MS = 500
@@ -91,9 +92,10 @@ MODEL_BY_NAME = {m.name: m for m in MODELS}
 
 def source_names():
     """List shown in the camera drop-down: the two analysis modes, a demo source, then
-    the cameras sorted alphabetically (same order as RMH_BuildCameraDisplayOrder)."""
+    the cameras sorted alphabetically (same order as RMH_BuildCameraDisplayOrder), with
+    the wireless P2 Pro bridge listed next to the wired P2 Pro."""
     return [SNAPSHOT_ANALYSIS, RECORDING_ANALYSIS, DEMO_CAMERA] + sorted(
-        (m.name for m in MODELS), key=str.lower)
+        [m.name for m in MODELS] + [WIRELESS_P2PRO], key=str.lower)
 
 
 # Frame geometry per pool, RMH_SupportedIRCameras_Resources.h

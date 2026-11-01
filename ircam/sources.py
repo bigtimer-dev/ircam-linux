@@ -3,6 +3,7 @@ modes (RAW snapshot / RAW recording). Port of the acquisition half of
 RMH_ThermalCameraSupport_Library.cpp (Open/Calibrate/SetRange/WriteConfig/InitialEvents).
 """
 import math
+import socket
 import struct
 import threading
 import time
@@ -401,6 +402,239 @@ class DemoSource(Source):
         return True
 
 
+class NetworkSource(Source):
+    """A P2 Pro on the wireless bridge (bridge/ircam_bridge.py, IRW1 protocol). The bridge
+    sends the camera's temperature half; the 256x384 frame is rebuilt here so everything
+    downstream is identical to the wired camera."""
+    name = C.WIRELESS_P2PRO
+
+    def __init__(self, host="", full_frame=False):
+        super().__init__()
+        from .net import protocol as P
+        self.P = P
+        self.host, self.port = P.split_host(host)
+        self.full_frame = full_frame
+        self.ctrl = self.udp = None
+        self.alive = False
+        self.dead = None                 # reason the link died
+        self.cond = threading.Condition()
+        self.frame = None                # (bytes, seq)
+        self.seq = self.read_seq = 0
+        self.rx_times = []
+        self.replies = {}
+        self.next_id = 0
+        self.wlock = threading.Lock()
+        self.offset_us = None            # bridge clock - local clock
+        self.pings = []                  # (rtt_us, offset_us)
+        self.best_rtt = None
+        self.latency_ms = None
+        self.status = {}
+        self.asm = None
+
+    # control RPC ---------------------------------------------------------------------
+    def _call(self, cmd, timeout=3.0, **kw):
+        if self.dead:
+            raise ConnectionError(self.dead)
+        with self.wlock:
+            self.next_id += 1
+            mid = self.next_id
+            ev = threading.Event()
+            self.replies[mid] = [ev, None]
+            try:
+                self.P.send_msg(self.ctrl, {"id": mid, "cmd": cmd, **kw})
+            except OSError as e:
+                self.replies.pop(mid, None)
+                raise ConnectionError(f"bridge connection lost: {e}") from None
+        if not ev.wait(timeout):
+            self.replies.pop(mid, None)
+            raise TimeoutError(f"the bridge did not answer '{cmd}'")
+        reply = self.replies.pop(mid)[1]
+        if reply is None:
+            raise ConnectionError(self.dead or "bridge connection lost")
+        if not reply.get("ok"):
+            raise OSError(reply.get("error", f"'{cmd}' failed"))
+        return reply
+
+    def _ctrl_loop(self):
+        rd = self.P.LineReader(self.ctrl)
+        try:
+            while self.alive:
+                msg = rd.read()
+                slot = self.replies.get(msg.get("id"))
+                if slot:
+                    slot[1] = msg
+                    slot[0].set()
+        except (OSError, self.P.ProtocolError) as e:
+            if self.alive:
+                self._die(f"lost the connection to the wireless bridge ({e})")
+
+    def _die(self, reason):
+        self.dead = self.dead or reason
+        for ev, _ in list(self.replies.values()):
+            ev.set()
+        with self.cond:
+            self.cond.notify_all()
+
+    # lifecycle -----------------------------------------------------------------------
+    def open(self, log):
+        P = self.P
+        log(f"Connecting to the wireless bridge at {self.host}:{self.port}…")
+        try:
+            self.ctrl = socket.create_connection((self.host, self.port), timeout=5)
+        except socket.gaierror:
+            raise SourceError(f"Cannot resolve '{self.host}'. Check the bridge address in "
+                              "Settings → Camera (try its IP address).")
+        except OSError as e:
+            raise SourceError(f"Cannot reach the wireless bridge at {self.host}:{self.port}: "
+                              f"{e.strerror or e}. Is it powered and on the same network?")
+        self.ctrl.settimeout(None)
+        self.ctrl.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.alive = True
+        threading.Thread(target=self._ctrl_loop, daemon=True, name="irw-ctrl").start()
+        try:
+            hello = self._call("hello")
+        except OSError as e:
+            self.close()
+            raise SourceError(f"The wireless bridge did not respond properly: {e}")
+        if hello.get("proto") != P.VERSION:
+            self.close()
+            raise SourceError(f"Unsupported bridge protocol version {hello.get('proto')}.")
+        if not hello.get("camera_ok"):
+            log("The bridge reports no camera yet; waiting for it…", "warning")
+        self.can_switch_range = bool(hello.get("high_range"))
+        self.token = hello["token"]
+        self.info = [f"Bridge {hello.get('bridge')} at {self.host}", f"Camera {hello.get('model')}"]
+        self._geometry(*C.POOL2_SIZE, C.POOL_2)
+        corr = self.cam.temp_correction
+        thermal.read_camera_config(self.cam, None)
+        self.cam.temp_correction = corr
+        thermal.generate_lut(self.cam)
+
+        ip = self.ctrl.getpeername()[0]
+        self.udp = socket.socket(socket.AF_INET6 if ":" in ip else socket.AF_INET, socket.SOCK_DGRAM)
+        self.udp.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 21)
+        self.udp.connect((ip, int(hello.get("data_port", P.DATA_PORT))))
+        self.udp.settimeout(0.5)
+        self.asm = P.Assembler(P.FRAME_ROWS if self.full_frame else P.FRAME_ROWS - P.TEMP_ROW0)
+        self._subscribe()
+        threading.Thread(target=self._rx_loop, daemon=True, name="irw-rx").start()
+        threading.Thread(target=self._keepalive_loop, daemon=True, name="irw-keepalive").start()
+        try:
+            self._ping()
+            self._call("start", codec=P.CODEC_ZLIB, full_frame=self.full_frame)
+        except OSError as e:
+            self.close()
+            raise SourceError(f"Could not start the wireless stream: {e}")
+        log(f"Wireless bridge connected ({ip}); streaming compressed temperature data.", "success")
+
+    def _subscribe(self):
+        try:
+            self.udp.send(self.P.subscribe_packet(self.token))
+        except OSError:
+            pass
+
+    def _ping(self):
+        t0 = time.monotonic_ns() // 1000
+        r = self._call("ping", t=t0, timeout=2.0)
+        t1 = time.monotonic_ns() // 1000
+        # clock offset from the fastest of the last 10 round trips (least queueing error)
+        self.pings = (self.pings + [(t1 - t0, r["bridge_us"] - (t0 + t1) // 2)])[-10:]
+        self.best_rtt, self.offset_us = min(self.pings)
+
+    def _keepalive_loop(self):
+        n = 0
+        while self.alive and not self.dead:
+            self._subscribe()
+            try:
+                self._ping()
+                if n % 2 == 0:
+                    self.status = self._call("status")
+            except TimeoutError:
+                pass
+            except OSError:
+                return
+            n += 1
+            time.sleep(1.0)
+
+    def _rx_loop(self):
+        P, half = self.P, self.full_frame is False
+        buf = np.zeros((P.FRAME_ROWS, P.WIDTH), "<u2")
+        while self.alive and not self.dead:
+            try:
+                data = self.udp.recv(2048)
+            except socket.timeout:
+                continue
+            except OSError:
+                continue          # e.g. ICMP port unreachable while the bridge restarts
+            for rows, fid, ts, flags in self.asm.feed(data):
+                if half:
+                    buf[P.TEMP_ROW0:] = rows
+                    buf[:P.TEMP_ROW0] = rows >> 6      # stand-in image half (unused downstream)
+                else:
+                    buf[:] = rows
+                now = time.monotonic_ns() // 1000
+                if self.offset_us is not None:
+                    self.latency_ms = max(0.0, (now - (ts - self.offset_us)) / 1000)
+                with self.cond:
+                    self.seq += 1
+                    self.frame = buf.tobytes()
+                    self.rx_times = [t for t in self.rx_times[-60:] if now - t < 2_000_000] + [now]
+                    self.cond.notify_all()
+
+    def read(self):
+        with self.cond:
+            self.cond.wait_for(lambda: self.dead or self.seq != self.read_seq, 1.0)
+            if self.dead:
+                raise ConnectionError(self.dead)
+            if self.seq == self.read_seq:
+                return None
+            self.read_seq = self.seq
+            return self.frame
+
+    def fps(self):
+        t = self.rx_times
+        return (len(t) - 1) / ((t[-1] - t[0]) / 1e6) if len(t) > 1 and t[-1] > t[0] else 0.0
+
+    def link_stats(self):
+        st = self.status
+        return {"loss": self.asm.loss() if self.asm else 0.0, "latency_ms": self.latency_ms,
+                "rtt_ms": self.best_rtt / 1000 if self.best_rtt else None,
+                "rssi_dbm": st.get("rssi_dbm"), "battery_pct": st.get("battery_pct"),
+                "cpu_temp": st.get("cpu_temp"), "camera_ok": st.get("camera_ok", True)}
+
+    # camera functions ----------------------------------------------------------------
+    def set_range(self, high, log):
+        if not self.can_switch_range:
+            return super().set_range(high, log)
+        self._call("set_range", high=bool(high), timeout=8.0)
+        self.cam.range_flag = 2 if high else 1
+        log(f"P2 Pro (wireless) switched to the {'high' if high else 'low'} temperature range.", "success")
+        return True
+
+    def current_high_range(self):
+        if not self.can_switch_range:
+            return None
+        return bool(self._call("get_range")["high"])
+
+    def close(self):
+        if self.alive and self.ctrl and not self.dead:
+            try:
+                self._call("stop", timeout=1.0)
+            except OSError:
+                pass
+        self.alive = False
+        self._die("closed")
+        for s in (self.ctrl, self.udp):
+            if s is None:
+                continue
+            try:
+                s.shutdown(socket.SHUT_RDWR)    # wakes the blocked reader threads, sends FIN
+            except OSError:
+                pass
+            s.close()
+        self.ctrl = self.udp = None
+
+
 class SnapshotSource(Source):
     live = False
     nominal_fps = 1.0
@@ -502,6 +736,8 @@ def make_source(name, settings, path=None):
         return SnapshotSource(path)
     if name == C.RECORDING_ANALYSIS:
         return RecordingSource(path)
+    if name == C.WIRELESS_P2PRO:
+        return NetworkSource(settings.get("wireless_host", ""))
     model = C.MODEL_BY_NAME[name]
     if model.pool == C.POOL_5:
         return P3Source(model)

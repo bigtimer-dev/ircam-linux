@@ -105,6 +105,15 @@ class SettingsDialog(Adw.PreferencesDialog):
         g.add(row)
         page.add(g)
 
+        g = Adw.PreferencesGroup(title="Wireless P2 Pro",
+                                 description="Address of the Raspberry Pi bridge used by "
+                                             f"“{C.WIRELESS_P2PRO}”: a host name, IP address or host:port.")
+        row = Adw.EntryRow(title="Bridge address (default p2pro.local)")
+        row.set_text(s["wireless_host"])
+        row.connect("changed", lambda r: self._set("wireless_host", r.get_text().strip() or "p2pro.local"))
+        g.add(row)
+        page.add(g)
+
         g = Adw.PreferencesGroup(title="Temperature Units")
         units = ["C", "F", "K"]
         g.add(_combo("Display unit", ["Celsius (°C)", "Fahrenheit (°F)", "Kelvin (K)"],

@@ -32,6 +32,7 @@ PLOT_COLORS = ["#ff4040", "#40a0ff", "#40ff70", "#ffd040", "#ff60ff",
 DEFAULTS = {
     "camera_source": "InfiRay Or Thermal Master P2Pro",
     "v4l2_device": "auto",
+    "wireless_host": "p2pro.local",   # wireless P2 Pro bridge: host, host:port or IP
     "temp_unit": "C",
     "temp_correction": 0.0,
     # palettes

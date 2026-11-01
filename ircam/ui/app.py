@@ -181,6 +181,11 @@ class IrcamApp(Adw.Application):
         elif self.demo:
             self.camera_dd.set_selected(C.source_names().index(C.DEMO_CAMERA))
             GLib.idle_add(self.connect_camera)
+        elif getattr(self, "wireless", None) is not None:
+            if self.wireless:
+                self.settings["wireless_host"] = self.wireless
+            self.camera_dd.set_selected(C.source_names().index(C.WIRELESS_P2PRO))
+            GLib.idle_add(self.connect_camera)
 
     def build_window(self):
         s = self.settings
@@ -490,6 +495,17 @@ class IrcamApp(Adw.Application):
                 parts.append(f"FPA {src.cam.temp_fpa * us[0] + us[1]:.1f}{us[2]}")
                 parts.append(f"drift {eng.drift() * us[0]:+.2f}")
                 parts.append("HIGH range" if eng.high_range else "LOW range")
+                if isinstance(src, sources.NetworkSource):
+                    ls = src.link_stats()
+                    parts.append(f"loss {ls['loss'] * 100:.1f}%")
+                    if ls["latency_ms"] is not None:
+                        parts.append(f"{ls['latency_ms']:.0f} ms")
+                    if ls["rssi_dbm"] is not None:
+                        parts.append(f"{ls['rssi_dbm']} dBm")
+                    if ls["battery_pct"] is not None:
+                        parts.append(f"bat {ls['battery_pct']:.0f}%")
+                    if not ls["camera_ok"]:
+                        parts.append("NO CAMERA on bridge")
             if eng.recording:
                 parts.append(f"● REC {eng.rec_frames}")
             if eng.logging:
@@ -978,11 +994,14 @@ class IrcamApp(Adw.Application):
 
 def main(argv):
     if "-h" in argv or "--help" in argv:
-        print("usage: ircam-linux [--demo] [SnapShotRAW_*.png | RAWRecording_*.avi]")
+        print("usage: ircam-linux [--demo | --wireless[=HOST]] [SnapShotRAW_*.png | RAWRecording_*.avi]")
         return 0
     demo = "--demo" in argv
     files = [a for a in argv[1:] if not a.startswith("-") and os.path.isfile(a)]
     app = IrcamApp(demo=demo)
+    for a in argv[1:]:
+        if a == "--wireless" or a.startswith("--wireless="):
+            app.wireless = a.partition("=")[2]   # connect to the wireless P2 Pro bridge
     if files:
         app.open_path = os.path.abspath(files[0])
     return app.run(argv[:1])

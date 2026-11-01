@@ -43,6 +43,21 @@ These are the same models as the Windows app, grouped by protocol "pool":
 The camera is found automatically by its V4L2 name or USB id. You can also choose a specific
 `/dev/video*` device under Settings → Camera.
 
+## Wireless P2 Pro (experimental)
+
+The P2 Pro can also be used wirelessly through a small bridge (planned: a Raspberry Pi Zero 2 W
+the camera plugs into). The bridge sends the camera's raw temperature data over WiFi, losslessly
+compressed (about 5 Mbit/s at 25 fps), and the app processes it exactly like the wired camera.
+USB keeps working as before; wireless is just an extra entry in the camera list.
+
+- On the bridge: `python3 bridge/ircam_bridge.py` (or `--demo` to try it without a camera).
+- In the app: pick **InfiRay P2 Pro (Wireless)** and set the bridge address under
+  Settings → Camera (default `p2pro.local`), or start with `ircam-linux --wireless=HOST`.
+- The viewer opens both connections itself (TCP 47801, UDP 47800), so no firewall rules are
+  needed on the PC.
+
+Design, measurements and the Pi setup plan: [docs/WIRELESS_PLAN.md](docs/WIRELESS_PLAN.md).
+
 ## Feature map (Windows → Linux)
 
 | Windows feature | Linux |

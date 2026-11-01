@@ -108,6 +108,13 @@ bands.**
 
 ## Phase 1 — Protocol + PC side (2–3 days, all testable without the Pi)
 
+> **Status: ✅ done 2026-10-31.** Real P2 Pro → bridge on the PC → localhost → app: 25.0 fps,
+> 0 % loss, ~6 ms added by the bridge pipeline (encode + send + decode), range switching works
+> both ways. Unit, assembly and loopback tests in `tests/test_net.py`. The app can also be
+> started with `--wireless[=HOST]`. Differences from the text below: the bridge already reads
+> RSSI from `/proc/net/wireless` (no `iw` needed), and close/takeover use `shutdown()` so the
+> other side notices at once.
+
 ### 1.1 Protocol `IRW1` — `ircam/net/protocol.py` (stdlib + numpy only)
 
 **Control: TCP, PC → Pi port 47801, newline-delimited JSON**
