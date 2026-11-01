@@ -221,14 +221,50 @@ works unchanged.
 8. Optional: read-only root filesystem (`raspi-config` → Overlay FS), so pulling the battery
    can't corrupt the SD card. Enabled only after everything works.
 
-### 2.2 Network modes
-- **Home:** joins the saved WiFi. The PC uses `p2pro.local`.
-- **Field (hotspot fallback):** `bridge/netwatch.sh`. If no saved network connects within
-  30 s of boot, it brings up the NetworkManager AP `P2Pro-xxxx` (WPA2, channel 1/6/11 picked
-  by the least crowded scan). The Pi is then `10.42.0.1`, and the PC or phone joins that
-  network.
-- **Phone hotspot:** saved as a second WiFi profile, so the Pi and a laptop can both join the
-  phone.
+### 2.2 Network modes + setup page
+- **Home:** joins a saved WiFi. The PC uses `p2pro.local`.
+- **Hotspot (fallback):** `bridge/netwatch.py`. If no saved network connects within 30 s of
+  boot, the Pi brings up its own WPA2 network `P2Pro-xxxx` (NetworkManager shared mode,
+  channel picked from the least crowded scan). The Pi is then always `10.42.0.1`.
+  **Streaming works normally in this mode.** You don't have to use the setup page; you can
+  just connect the app and use the camera.
+- **Phone hotspot:** just another saved network (it can be added from the setup page).
+
+**Setup page** — `bridge/webui.py`: stdlib `http.server`, port 80, a single page with no
+external assets. It's served in both modes: `http://10.42.0.1` on the hotspot and
+`http://p2pro.local` at home.
+- **Captive portal on the hotspot:** NetworkManager's dnsmasq answers every DNS name with
+  10.42.0.1 (`/etc/NetworkManager/dnsmasq-shared.d/captive.conf`), and the page also answers
+  the phone/OS connectivity-check URLs. So joining `P2Pro-xxxx` pops the page up
+  automatically. Dismiss it and the hotspot keeps working.
+- **Add a network:** a list of nearby networks with signal strength, from a scan made just
+  before the hotspot started, plus a "rescan" button. You pick one and type the password, or
+  enter a hidden SSID by hand.
+- **Switching:** the Pi has a single radio, so it can't run the hotspot and join a router at
+  the same time. After "Save & connect", the page shows *"Switching… reconnect your device
+  to <network> and open http://p2pro.local"*. If the new network fails to connect within
+  30 s, the Pi brings the hotspot back, and the page shows the error ("wrong password" /
+  "network not found") on the next visit. A wrong password can never strand the Pi.
+- **Manage:**
+  - list saved networks (priority order, delete)
+  - "force hotspot now" button
+  - hotspot name and password
+  - device name (`p2pro` → `p2pro-shop` etc., which also changes the `.local` name)
+- **Status panel:** camera connected, current viewer, fps, WiFi signal, battery, CPU
+  temperature, bridge version.
+- **Physical fallback (optional):** holding a button on a GPIO pin for 5 s forces hotspot
+  mode, for when the Pi is stuck on a network you can't reach.
+- **Security:**
+  - The hotspot is WPA2. Its default password is printed on a label / in the README, and
+    can be changed on the page.
+  - On the home network, changing settings requires a PIN shown on the hotspot page (stored
+    on the Pi).
+  - Viewing the status needs no PIN.
+
+**Phone note:** a hotspot with no internet makes Android prefer mobile data. A browser still
+reaches 10.42.0.1 fine. In Phase 3, the Android app must bind its sockets to the WiFi network
+(`ConnectivityManager.bindProcessToNetwork`) or the stream would try to go over mobile
+data.
 
 ### 2.3 Measurements (results recorded in this file)
 
@@ -264,6 +300,7 @@ PiSugar 3 · auto-start with no SSH needed.
 | Camera draw plus Pi startup current on a small battery | Brown-out / reboot | 2 A capable supply. PiSugar 3 is rated for the Zero + USB devices |
 | SD card corruption from power pulls | Doesn't boot | Overlay FS (read-only root) once stable |
 | mDNS `.local` not resolving on some networks | Can't connect | Manual IP field. In AP mode the IP is always 10.42.0.1 |
+| Wrong WiFi password entered on the setup page | Pi unreachable | Hotspot comes back after 30 s; optional GPIO button forces hotspot |
 
 ---
 
@@ -272,7 +309,8 @@ PiSugar 3 · auto-start with no SSH needed.
 1. `docs/p2pro-descriptors.txt`, `tools/compress_bench.py` + results — Phase 0
 2. `ircam/net/protocol.py`, `bridge/ircam_bridge.py`, `NetworkSource`, camera entry,
    settings, UI link label, `tests/test_net.py` — Phase 1
-3. `bridge/install-pi.sh`, `bridge/netwatch.sh`, systemd + udev units, measurement table —
+3. `bridge/install-pi.sh`, `bridge/netwatch.py`, `bridge/webui.py` (setup page / captive
+   portal), systemd + udev units, measurement table —
    Phase 2
 4. Android `NetworkSource` — Phase 3
 
