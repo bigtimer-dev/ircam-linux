@@ -201,6 +201,21 @@ works unchanged.
 
 ## Phase 2 — Pi Zero 2 W bridge (2–3 days)
 
+> **Status: software ready 2026-10-31, waiting for the hardware.**
+> - Written and tested on the PC: `bridge/install-pi.sh`, `bridge/deploy.sh`,
+>   `bridge/ircam_netd.py` + `bridge/setup.html` (WiFi manager, hotspot fallback, captive
+>   portal, setup page with PIN), and the `system/` units. The netd tests use a simulated WiFi
+>   backend (`tests/test_netd.py`).
+> - Not testable without the Pi: real `nmcli` / AP mode, the captive pop-up on phones, the
+>   dwc2 USB host, and the measurements below.
+> - Step-by-step guide: `bridge/README.md`.
+> - Differences from the text below:
+>   - The bridge service runs all the time and retries the camera every 2 s, instead of being
+>     started by udev.
+>   - The WiFi watcher and the setup page are one service, `ircam-netd`.
+>   - The GPIO hotspot button is not done yet.
+>   - Read-only rootfs is left as a manual step once everything works.
+
 ### 2.1 Pi setup (`bridge/install-pi.sh`, run over SSH)
 1. Flash Pi OS Lite 64-bit with Imager (hostname `p2pro`, SSH key, home WiFi).
 2. `apt install python3-numpy libusb-1.0-0 avahi-daemon`.

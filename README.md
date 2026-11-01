@@ -50,7 +50,8 @@ the camera plugs into). The bridge sends the camera's raw temperature data over 
 compressed (about 5 Mbit/s at 25 fps), and the app processes it exactly like the wired camera.
 USB keeps working as before; wireless is just an extra entry in the camera list.
 
-- On the bridge: `python3 bridge/ircam_bridge.py` (or `--demo` to try it without a camera).
+- Bridge setup (flash the Pi, then one command): [bridge/README.md](bridge/README.md).
+  For a quick try on any Linux box: `python3 bridge/ircam_bridge.py` (or `--demo`).
 - In the app: pick **InfiRay P2 Pro (Wireless)** and set the bridge address under
   Settings → Camera (default `p2pro.local`), or start with `ircam-linux --wireless=HOST`.
 - The viewer opens both connections itself (TCP 47801, UDP 47800), so no firewall rules are
