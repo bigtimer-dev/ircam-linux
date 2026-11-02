@@ -46,6 +46,27 @@ class Parsing(unittest.TestCase):
         self.assertTrue(N.HOSTNAME_RE.match("p2pro-shop"))
 
 
+class NmParsing(unittest.TestCase):
+    """The real nmcli wrapper, fed with captured nmcli output (Pi OS Trixie, NetworkManager 1.52)."""
+
+    def test_saved_reads_terse_property_lines(self):
+        nm = N.NM()
+        out = {
+            ("-t", "-f", "NAME,TYPE", "con", "show"): "netplan-wlan0-ASUS:802-11-wireless\nwifi-My\\:Net:802-11-wireless\n"
+                                                    "p2pro-hotspot:802-11-wireless\nlo:loopback",
+            "netplan-wlan0-ASUS": "802-11-wireless.ssid:ASUS\nconnection.autoconnect-priority:0\n802-11-wireless.mode:infrastructure",
+            "wifi-My:Net": "802-11-wireless.ssid:My:Net\nconnection.autoconnect-priority:10\n802-11-wireless.mode:infrastructure",
+        }
+
+        def run(*args, timeout=40):
+            if args in out:
+                return 0, out[args]
+            return 0, out.get(args[-1], "")
+        nm._run = run
+        self.assertEqual(nm.saved(), [{"name": "wifi-My:Net", "ssid": "My:Net", "priority": 10},
+                                      {"name": "netplan-wlan0-ASUS", "ssid": "ASUS", "priority": 0}])
+
+
 class ManagerFlow(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -95,6 +116,12 @@ class ManagerFlow(unittest.TestCase):
         self.post("/api/connect", {"ssid": "HomeRouter", "password": "password123"})
         self.assertTrue(wait_for(lambda: self.mgr.mode == "client" and self.nm.active == "wifi-HomeRouter"))
         self.assertEqual([s["ssid"] for s in self.nm.saved()], ["HomeRouter"])
+
+    def test_reconnecting_replaces_older_profiles_of_the_same_network(self):
+        self.nm.profiles["netplan-wlan0-HomeRouter"] = {"ssid": "HomeRouter", "psk": "password123", "priority": 0}
+        self.post("/api/connect", {"ssid": "HomeRouter", "password": "password123"})
+        self.assertTrue(wait_for(lambda: self.mgr.mode == "client"))
+        self.assertEqual([s["name"] for s in self.nm.saved()], ["wifi-HomeRouter"])
         self.assertIsNone(self.mgr.last_error)
 
     def test_lost_network_brings_back_hotspot(self):

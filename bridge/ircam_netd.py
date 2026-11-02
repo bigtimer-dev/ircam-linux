@@ -167,12 +167,17 @@ class NM:
             f = _split_terse(line)
             if len(f) < 2 or f[1] != "802-11-wireless" or f[0] == HOTSPOT_CON:
                 continue
-            rc2, o2 = self._run("-g", "802-11-wireless.ssid,connection.autoconnect-priority,802-11-wireless.mode",
+            rc2, o2 = self._run("-t", "-f", "802-11-wireless.ssid,connection.autoconnect-priority,802-11-wireless.mode",
                                 "con", "show", f[0])
-            parts = _split_terse(o2.splitlines()[0]) if rc2 == 0 and o2 else ["", "0", ""]
-            if len(parts) >= 3 and parts[2] == "ap":
+            props = {}
+            for ln in o2.splitlines() if rc2 == 0 else []:
+                k, _, v = ln.partition(":")                  # value may contain ':' (kept whole)
+                props[k] = v
+            if props.get("802-11-wireless.mode") == "ap":
                 continue
-            res.append({"name": f[0], "ssid": parts[0] or f[0], "priority": int(parts[1] or 0)})
+            prio = props.get("connection.autoconnect-priority", "0")
+            res.append({"name": f[0], "ssid": props.get("802-11-wireless.ssid") or f[0],
+                        "priority": int(prio) if prio.lstrip("-").isdigit() else 0})
         return sorted(res, key=lambda n: -n["priority"])
 
     def make_hotspot(self, ssid, password):
@@ -428,6 +433,9 @@ class Manager:
                 ok, out = self.nm.up(name, self.cfg["connect_timeout_s"])
                 if ok:
                     log.info("connected to new network %s", ssid)
+                    for old in self.nm.saved():          # one profile per network: drop older copies
+                        if old["ssid"] == ssid and old["name"] != name:
+                            self.nm.delete(old["name"])
                     self.hold_until = 0.0
                     self.mode, self.message = "client", ""
                     self.st = self.nm.state()
