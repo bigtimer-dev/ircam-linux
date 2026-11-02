@@ -73,6 +73,7 @@ reader.
 |---|---|
 | `p2pro.local` not found | Use the Pi's IP from your router. The app also accepts an IP address in Settings → Camera |
 | Setup page says "Camera: Not connected" | Is the adapter in the USB port (not PWR)? Does it carry data? Run `ssh pi@p2pro.local lsusb` and look for `0bda:5830` |
+| Camera never detected, `dmesg` shows nothing at all when plugging | The adapter/cable has no data wires, or it's in the PWR port. Many micro-USB→USB-C adapters are charge-only. A phone saying **"Analog audio accessory detected"** through the adapter means its USB-C CC pins are miswired: use another adapter. Check the port directly: `sudo grep HPRT0 /sys/kernel/debug/usb/3f980000.usb/regdump` (bit 0 = device connected) |
 | Hotspot doesn't start | WiFi country not set: `sudo raspi-config nonint do_wifi_country US` (your code), then reboot |
 | Stutter / loss | Run `journalctl -u ircam-bridge -f`. Move closer, check that 2.4 GHz isn't crowded, check the power supply (≥ 2 A) |
 | Logs | `ssh pi@p2pro.local journalctl -u ircam-bridge -u ircam-netd -f` |

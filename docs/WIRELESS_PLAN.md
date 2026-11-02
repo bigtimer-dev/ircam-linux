@@ -201,7 +201,22 @@ works unchanged.
 
 ## Phase 2 — Pi Zero 2 W bridge (2–3 days)
 
-> **Status: software ready 2026-10-31, waiting for the hardware.**
+> **Status: ✅ working on real hardware, 2026-11-02.**
+> Pi Zero 2 W (Pi OS Lite 64-bit Trixie, kernel 6.18) + P2 Pro over home WiFi (−57 dBm),
+> 30 s run:
+> - **25.1 fps**
+> - **30.6 ms median latency** (capture → decoded on the PC; 39 ms p95)
+> - **0.016 % row loss** (2 frames had one band patched from the previous frame)
+> - frame gap 40 ms median, 77 ms worst
+> - bridge at 58 % of one core (~15 % of the Pi), 50 °C, no throttling
+> - range switching works over WiFi
+>
+> Open items:
+> - Connecting by name takes ~4 s because `p2pro.local` resolves slowly; by IP it's instant.
+> - The kernel warns that `/proc/net/wireless` (used for RSSI) is deprecated.
+> - Not yet measured: battery runtime, glass-to-glass latency, hotspot mode, the captive pop-up.
+>
+> **Earlier status (2026-10-31): software ready, waiting for the hardware.**
 > - Written and tested on the PC: `bridge/install-pi.sh`, `bridge/deploy.sh`,
 >   `bridge/ircam_netd.py` + `bridge/setup.html` (WiFi manager, hotspot fallback, captive
 >   portal, setup page with PIN), and the `system/` units. The netd tests use a simulated WiFi
