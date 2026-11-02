@@ -64,8 +64,9 @@ reader.
   your router off.
 - Join `P2Pro-xxxx` with your phone or laptop. The setup page should pop up by itself.
 - Stream from the app using the address `10.42.0.1`.
-- Add your home network on the page. The Pi switches back to it (and if the password is wrong,
-  the hotspot returns after about 30 s).
+- Add your home network on the page. The Pi switches back to it (if the password is wrong, the
+  hotspot returns in about 15 s and the page says so).
+- "Switch to hotspot now" holds the hotspot for 5 minutes, then the Pi goes back to known networks.
 
 ## Troubleshooting
 

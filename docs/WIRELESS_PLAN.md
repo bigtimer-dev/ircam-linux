@@ -219,6 +219,7 @@ works unchanged.
 >   - DNS answers every name with 10.42.0.1, and the Android / Apple / Windows connectivity
 >     checks redirect to the setup page.
 >   - The Android phone (IRCAM 1.1.0) streamed over the hotspot.
+>   - Captive pop-up confirmed on the phone: joining the hotspot opened the setup page by itself.
 >   - Setup page: a wrong password brings the hotspot back in ~16 s with "Wrong password"; the
 >     right password returns the Pi to the home WiFi in ~8 s.
 > - Bugs found and fixed on hardware: PMF must be off on the brcmfmac AP (reason 17
