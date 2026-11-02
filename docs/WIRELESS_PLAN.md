@@ -214,7 +214,16 @@ works unchanged.
 > Open items:
 > - Connecting by name takes ~4 s because `p2pro.local` resolves slowly; by IP it's instant.
 > - The kernel warns that `/proc/net/wireless` (used for RSSI) is deprecated.
-> - Not yet measured: battery runtime, glass-to-glass latency, hotspot mode, the captive pop-up.
+> - **Hotspot mode verified (same day):**
+>   - The PC joined `P2Pro-27C1` (plain WPA2 after the PMF fix) and streamed at 25 fps / 29 ms.
+>   - DNS answers every name with 10.42.0.1, and the Android / Apple / Windows connectivity
+>     checks redirect to the setup page.
+>   - The Android phone (IRCAM 1.1.0) streamed over the hotspot.
+>   - Setup page: a wrong password brings the hotspot back in ~16 s with "Wrong password"; the
+>     right password returns the Pi to the home WiFi in ~8 s.
+> - Bugs found and fixed on hardware: PMF must be off on the brcmfmac AP (reason 17
+>   IE_DIFFERENT); the forced hotspot no longer holds forever; the saved-network parsing.
+> - Not yet measured: battery runtime, glass-to-glass latency.
 >
 > **Earlier status (2026-10-31): software ready, waiting for the hardware.**
 > - Written and tested on the PC: `bridge/install-pi.sh`, `bridge/deploy.sh`,
