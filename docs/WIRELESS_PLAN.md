@@ -224,7 +224,10 @@ works unchanged.
 >     right password returns the Pi to the home WiFi in ~8 s.
 > - Bugs found and fixed on hardware: PMF must be off on the brcmfmac AP (reason 17
 >   IE_DIFFERENT); the forced hotspot no longer holds forever; the saved-network parsing.
-> - Not yet measured: battery runtime, glass-to-glass latency.
+> - Glass-to-glass (first estimate, 2026-11-02): about **100–125 ms** from a real hand movement to
+>   the PC monitor (iPhone 240 fps slow motion, 3 events read frame by frame). Rough: the phone and
+>   the P2 Pro saw the hand from different angles, and there is no USB baseline yet.
+> - Not yet measured: battery runtime, USB glass-to-glass baseline.
 >
 > **Earlier status (2026-10-31): software ready, waiting for the hardware.**
 > - Written and tested on the PC: `bridge/install-pi.sh`, `bridge/deploy.sh`,
