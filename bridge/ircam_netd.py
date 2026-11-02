@@ -36,6 +36,7 @@ HOTSPOT_CON = "p2pro-hotspot"
 PROFILE_PREFIX = "wifi-"
 CONFIG_PATH = "/etc/ircam-bridge/netd.json"
 STATUS_PATH = "/run/ircam-bridge/status.json"
+HOLD_S = 300                    # a forced hotspot blocks the return to saved networks this long
 HOSTNAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$")
 
 
@@ -180,7 +181,11 @@ class NM:
                             "autoconnect", "no", "ssid", ssid, "mode", "ap",
                             "802-11-wireless.band", "bg", "ipv4.method", "shared", "ipv6.method", "ignore",
                             "wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", password,
-                            "wifi-sec.proto", "rsn", "wifi-sec.pairwise", "ccmp", "wifi-sec.group", "ccmp")
+                            "wifi-sec.proto", "rsn", "wifi-sec.pairwise", "ccmp", "wifi-sec.group", "ccmp",
+                            # PMF off: with "optional" the Pi's brcmfmac AP advertises PMF/WPA3 in its
+                            # beacon but not in the handshake, and clients drop with reason 17
+                            # (IE_DIFFERENT). Plain WPA2-PSK works with every phone and laptop.
+                            "wifi-sec.pmf", "disable")
         return rc == 0, out
 
     def up(self, name, timeout=30):
@@ -309,7 +314,7 @@ class Manager:
         self.mode = "starting"                 # starting | searching | client | hotspot | switching
         self.message = ""
         self.last_error = None
-        self.hold_hotspot = False
+        self.hold_until = 0.0                  # "switch to hotspot now" keeps it until then
         self.scan_cache, self.scan_time = [], 0.0
         self.since_disconnected = None
         self.boot = time.monotonic()
@@ -388,7 +393,7 @@ class Manager:
             self.lock.release()
 
     def _hotspot_idle_retry(self, now):
-        if self.hold_hotspot or not self.nm.saved():
+        if now < self.hold_until or not self.nm.saved():
             self.idle_since = None
             return
         if self.nm.stations():
@@ -423,7 +428,7 @@ class Manager:
                 ok, out = self.nm.up(name, self.cfg["connect_timeout_s"])
                 if ok:
                     log.info("connected to new network %s", ssid)
-                    self.hold_hotspot = False
+                    self.hold_until = 0.0
                     self.mode, self.message = "client", ""
                     self.st = self.nm.state()
                 else:
@@ -446,7 +451,7 @@ class Manager:
     def force_hotspot(self):
         def work():
             with self.lock:
-                self.hold_hotspot = True
+                self.hold_until = time.monotonic() + HOLD_S   # not forever: if nobody can connect, saved networks win again
                 time.sleep(1)
                 if self.st.get("connection") and self.st["connection"] != HOTSPOT_CON:
                     self.nm.down(self.st["connection"])
@@ -488,7 +493,7 @@ class Manager:
         res = {"mode": self.mode, "message": self.message, "error": self.last_error,
                "ssid": st.get("ssid"), "ip": st.get("ip"), "signal": st.get("signal"),
                "hotspot_ssid": self.cfg["hotspot_ssid"], "hostname": socket.gethostname(),
-               "hold_hotspot": self.hold_hotspot, "via_hotspot": via_hotspot,
+               "hold_hotspot": time.monotonic() < self.hold_until, "via_hotspot": via_hotspot,
                "netd": __version__, "bridge": self.bridge_status()}
         if via_hotspot:
             res["pin"] = self.cfg["pin"]
