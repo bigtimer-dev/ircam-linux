@@ -4,8 +4,9 @@
 An optional add-on. It reads frames from the bridge's local tap (a Unix socket on the Pi), so
 it never takes the IRW1 stream away from ircam-linux / ircam-android; both can watch at once.
 It serves the viewer page on port 8080 and streams to it over a WebSocket: one message per
-frame, the temperature half compressed with the IRW1 codec 1 (row delta + zigzag + byte planes
-+ zlib). The bridge only does work for it while a browser is connected.
+frame, holding the bridge's own IRW1 datagrams (codec 1: row delta + zigzag + byte planes + zlib,
+in bands of rows). Nothing is re-compressed here, and when IRCAM watches too the bridge
+compresses each frame only once. The bridge only does work for it while a browser is connected.
 
     python3 ircam_web.py                                    # on the Pi (systemd: ircam-web)
     python3 ircam_bridge.py --demo --tap /tmp/tap.sock &    # try it on a PC
@@ -33,8 +34,6 @@ for p in (here, here.parent):          # installed (/opt/ircam-bridge) or repo c
         sys.path.insert(0, str(p))
         break
 
-import numpy as np  # noqa: E402
-
 from ircam.net import protocol as P  # noqa: E402
 
 __version__ = "0.1.0"
@@ -43,11 +42,11 @@ TAP_PATH = "/run/ircam-bridge/tap.sock"
 WEB_PORT = 8080
 MAX_CLIENTS = 6
 WS_GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-# to the browser, per frame: magic, frame id, flags, rows, width, then the zlib payload
-WS_FRAME = struct.Struct("<4sIBBH")
+# to the browser, per frame: b"IRWC", then the tap body as is: u16 count, then per IRW1 datagram
+# u16 length + the datagram (header P.HEADER + band payload)
+WS_MAGIC = b"IRWC"
 TAP_LEN = struct.Struct("<Ic")
-TAP_FRAME = struct.Struct("<IQB")
-TEMP_BYTES = (P.FRAME_ROWS - P.TEMP_ROW0) * P.WIDTH * 2
+U16 = struct.Struct("<H")
 STATIC = {   # path -> (file in web/, content type)
     "/": ("viewer.html", "text/html; charset=utf-8"),
     "/index.html": ("viewer.html", "text/html; charset=utf-8"),
@@ -169,7 +168,7 @@ class Hub:
                 if not 1 <= n <= 1 << 20:
                     raise ValueError("bad tap message")
                 body = recv_exact(s, n - 1)
-                if kind == b"F":
+                if kind == b"B":
                     self._frame(body)
                 elif kind == b"J":
                     msg = json.loads(body)
@@ -185,12 +184,16 @@ class Hub:
             log.info("tap closed (%d browsers)", len(self.clients))
 
     def _frame(self, body):
-        if len(body) != TAP_FRAME.size + TEMP_BYTES:
-            raise ValueError("bad tap frame size")
-        fid, _ts, flags = TAP_FRAME.unpack_from(body)
-        rows = np.frombuffer(body, "<u2", offset=TAP_FRAME.size).reshape(-1, P.WIDTH)
-        payload = P.encode_band(rows, P.CODEC_ZLIB)
-        msg = WS_FRAME.pack(b"IRWB", fid, flags, rows.shape[0] & 0xFF, P.WIDTH) + payload
+        """Check the band list's framing (the browser trusts it) and pass it on unchanged."""
+        n, off = U16.unpack_from(body)[0], U16.size
+        for _ in range(n):
+            ln = U16.unpack_from(body, off)[0]
+            if ln < P.HEADER.size or off + U16.size + ln > len(body):
+                raise ValueError("bad tap band list")
+            off += U16.size + ln
+        if n == 0 or off != len(body):
+            raise ValueError("bad tap band list")
+        msg = WS_MAGIC + body
         t = time.monotonic()
         self.fps_times = [x for x in self.fps_times[-50:] if t - x < 2] + [t]
         with self.cond:

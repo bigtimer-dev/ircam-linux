@@ -12,7 +12,6 @@ import threading
 import time
 import unittest
 import urllib.request
-import zlib
 from pathlib import Path
 
 import numpy as np
@@ -72,14 +71,19 @@ class WsClient:
 
 
 def decode_ws_frame(data):
-    magic, fid, flags, rows, width = ircam_web.WS_FRAME.unpack_from(data)
-    assert magic == b"IRWB"
-    raw = zlib.decompress(data[ircam_web.WS_FRAME.size:])   # exactly what DecompressionStream('deflate') gets
-    n = rows * width
-    b = np.frombuffer(raw, np.uint8)
-    z = (b[:n].astype(np.uint16) << 8) | b[n:]
-    s = (z >> 1).astype(np.int32) ^ -(z & 1).astype(np.int32)
-    img = (np.cumsum(s.reshape(rows, width), axis=1, dtype=np.int64) & 0xFFFF).astype(np.uint16)
+    """A browser frame message: b"IRWC", u16 count, then u16 length + IRW1 datagram per band."""
+    assert data[:4] == b"IRWC"
+    n, off = struct.unpack_from("<H", data, 4)[0], 6
+    img = np.zeros((192, 256), np.uint16)
+    covered = np.zeros(192, bool)
+    fid = flags = None
+    for _ in range(n):
+        ln = struct.unpack_from("<H", data, off)[0]
+        codec, flags, fid, _ts, r0, cnt, payload = P.parse(data[off + 2:off + 2 + ln])
+        img[r0:r0 + cnt] = P.decode_band(payload, codec, cnt)
+        covered[r0:r0 + cnt] = True
+        off += 2 + ln
+    assert off == len(data) and covered.all()
     return fid, flags, img
 
 
@@ -133,13 +137,43 @@ class BrowserViewer(unittest.TestCase):
             self.assertEqual(img.shape, (192, 256))
             t = img / 64 - 273.15
             self.assertTrue(-30 < t.min() < t.max() < 120)
-            # bit-exact against the bridge's own copy of the same frame
-            with self.br.cond:
-                self.br.cond.wait_for(lambda: self.br.latest and self.br.latest[2] == fid, 0.001)
             ids = [f[0] for f in frames]
             self.assertEqual(ids, sorted(ids))
         finally:
             ws.close()
+
+    def test_each_frame_is_compressed_once_for_both_viewers(self):
+        """IRCAM (IRW1) and the browser get the same datagrams from one encode, and the browser's
+        picture is bit-exact with what the camera delivered."""
+        seen, encodes = {}, []
+        orig = P.packetize
+
+        def counting(rows, frame_id, ts_us, codec=P.CODEC_ZLIB, flags=0):
+            encodes.append(frame_id)
+            seen[frame_id] = rows.copy()
+            return orig(rows, frame_id, ts_us, codec, flags)
+        P.packetize = counting
+        src = NetworkSource(f"127.0.0.1:{self.br.ctrl_port}")
+        src.open(lambda *a: None)
+        ws = WsClient(self.port)
+        try:
+            got = []
+            for _ in range(4):
+                frames, _ = self.frames(ws, 5)
+                got += frames
+                for _ in range(5):
+                    src.read()
+            self.assertGreaterEqual(len(got), 15)
+            dup = [f for f in set(encodes) if encodes.count(f) > 1]
+            self.assertEqual(dup, [], "a frame was compressed more than once")
+            checked = [(fid, img) for fid, _flags, img in got if fid in seen]   # the first one may predate the hook
+            self.assertGreaterEqual(len(checked), 10)
+            for fid, img in checked:
+                np.testing.assert_array_equal(img, seen[fid])
+        finally:
+            P.packetize = orig
+            ws.close()
+            src.close()
 
     def test_browser_and_ircam_viewer_at_the_same_time(self):
         """The add-on must not take the IRW1 viewer slot away from ircam-linux / Android."""

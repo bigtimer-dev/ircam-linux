@@ -38,10 +38,11 @@ SUB_TIMEOUT = 3.0
 # Local tap (--tap): a Unix socket for other programs on the Pi (ircam_web.py, the browser
 # viewer). It is separate from the IRW1 viewer slot, so it never takes the stream away from
 # ircam-linux / ircam-android. Messages to the client: u32 length + 1 byte kind + body.
-#   kind F: TAP_FRAME header + the temperature half (192x256 u16 little-endian)
+#   kind B: u16 count, then per IRW1 datagram: u16 length + the datagram. These are the very
+#           same codec-1 datagrams the IRW1 viewer gets: each frame is compressed only once.
 #   kind J: JSON (replies to commands, which arrive as JSON lines)
 TAP_LEN = struct.Struct("<Ic")
-TAP_FRAME = struct.Struct("<IQB")          # frame_id ts_us flags
+U16 = struct.Struct("<H")
 
 
 def now_us():
@@ -230,6 +231,8 @@ class Bridge:
         self.tap = None
         self.tap_conns = set()
         self.web_viewers = 0          # browsers watching through the tap (reported by ircam-web)
+        self.enc_lock = threading.Lock()
+        self.enc_key = self.enc_val = None   # newest encoded frame, shared by IRW1 and the tap
 
     # threads -------------------------------------------------------------------------
     def start(self, status_file=None, tap=None):
@@ -303,14 +306,24 @@ class Bridge:
             if lim and time.monotonic() - last_sent < 1.0 / lim - 0.004:
                 continue
             last_sent = time.monotonic()
-            data = rows if sess["full_frame"] else rows[P.TEMP_ROW0:]
-            flags = (P.FLAG_HIGH_RANGE if self.high else 0) | (P.FLAG_FULL_FRAME if sess["full_frame"] else 0)
             try:
-                for dg in P.packetize(data, fid, ts, sess["codec"], flags):
+                for dg in self._encoded(item, sess["codec"], sess["full_frame"]):
                     self.udp.sendto(dg, addr)
                 self.sent_frames += 1
             except OSError as e:
                 log.debug("send: %s", e)
+
+    def _encoded(self, item, codec=P.CODEC_ZLIB, full=False):
+        """The frame as IRW1 datagrams, compressed once and shared: when the IRW1 viewer and the
+        browser tap want the same frame, the second one gets the cached result."""
+        rows, ts, fid = item
+        key = (fid, codec, full)
+        with self.enc_lock:
+            if self.enc_key != key:
+                flags = (P.FLAG_HIGH_RANGE if self.high else 0) | (P.FLAG_FULL_FRAME if full else 0)
+                self.enc_val = P.packetize(rows if full else rows[P.TEMP_ROW0:], fid, ts, codec, flags)
+                self.enc_key = key
+            return self.enc_val
 
     def _sub_loop(self):
         while self.alive:
@@ -422,11 +435,10 @@ class Bridge:
                     item = self.latest
                 if not self.alive or item is None or item[2] == last_id:
                     continue
-                rows, ts, fid = item
-                last_id = fid
-                flags = P.FLAG_HIGH_RANGE if self.high else 0
-                body = TAP_FRAME.pack(fid, ts, flags) + np.ascontiguousarray(rows[P.TEMP_ROW0:], "<u2").tobytes()
-                self._tap_send(conn, lock, b"F", body)
+                last_id = item[2]
+                dgs = self._encoded(item)
+                body = U16.pack(len(dgs)) + b"".join(U16.pack(len(d)) + d for d in dgs)
+                self._tap_send(conn, lock, b"B", body)
         except OSError:
             pass
         finally:

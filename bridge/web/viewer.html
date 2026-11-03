@@ -326,27 +326,50 @@ async function inflate(bytes) {
   const s = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
   return new Uint8Array(await new Response(s).arrayBuffer());
 }
+// One WebSocket message per frame: "IRWC", u16 count, then per IRW1 datagram u16 length + datagram.
+// Datagram = header "<4sBBHIQHH" (magic ver codec flags frame_id ts_us row_start row_count, 24 bytes)
+// + one band of rows: codec 0 raw u16 LE, codec 1 zlib(delta+zigzag, high bytes then low bytes).
+// These are the bridge's own IRW1 packets: it compresses each frame once for every viewer.
 async function onFrame(buf) {
   if (busy) { pending = buf; return; }                 // keep only the newest while decoding
   busy = true;
   try {
     while (buf) {
-      const dv = new DataView(buf);
-      if (dv.getUint32(0, true) !== 0x42575249) break;   // "IRWB"
-      const fid = dv.getUint32(4, true), flags = dv.getUint8(8), rows = dv.getUint8(9), width = dv.getUint16(10, true);
-      if (rows !== H || width !== W) break;
-      const b = await inflate(new Uint8Array(buf, 12));
-      const n = W * H, raw = new Uint16Array(n);
-      let mn = 65535, mx = 0, imn = 0, imx = 0;
-      for (let y = 0; y < H; y++) {
-        let acc = 0;
-        for (let x = 0; x < W; x++) {
-          const i = y * W + x, z = (b[i] << 8) | b[n + i];
-          acc = (acc + ((z >>> 1) ^ -(z & 1))) & 0xFFFF;
-          raw[i] = acc;
-          if (acc > mx) { mx = acc; imx = i; }
-          if (acc < mn) { mn = acc; imn = i; }
+      const dv = new DataView(buf), u8 = new Uint8Array(buf);
+      if (dv.getUint32(0, true) !== 0x43575249) break;   // "IRWC"
+      const count = dv.getUint16(4, true), bands = [];
+      let off = 6, fid = 0, flags = 0;
+      for (let k = 0; k < count; k++) {
+        const len = dv.getUint16(off, true), o = off + 2;
+        const codec = u8[o + 5], r0 = dv.getUint16(o + 20, true), cnt = dv.getUint16(o + 22, true);
+        flags = dv.getUint16(o + 6, true); fid = dv.getUint32(o + 8, true);
+        if (r0 + cnt <= H) bands.push({ codec, r0, cnt, data: u8.subarray(o + 24, o + len) });
+        off = o + len;
+      }
+      // all bands inflate in parallel; rows missing from a frame keep the previous values
+      const outs = await Promise.all(bands.map(b => b.codec === 1 ? inflate(b.data) : b.data));
+      const raw = frame && frame.raw.length === W * H ? new Uint16Array(frame.raw) : new Uint16Array(W * H);
+      bands.forEach((b, k) => {
+        const p = outs[k], n = b.cnt * W, base = b.r0 * W;
+        if (b.codec === 0) {
+          for (let i = 0; i < n; i++) raw[base + i] = p[2 * i] | (p[2 * i + 1] << 8);
+          return;
         }
+        if (p.length !== 2 * n) return;
+        for (let y = 0; y < b.cnt; y++) {
+          let acc = 0;
+          for (let x = 0, i = y * W; x < W; x++, i++) {
+            const z = (p[i] << 8) | p[n + i];
+            acc = (acc + ((z >>> 1) ^ -(z & 1))) & 0xFFFF;
+            raw[base + i] = acc;
+          }
+        }
+      });
+      let mn = 65535, mx = 0, imn = 0, imx = 0;
+      for (let i = 0; i < raw.length; i++) {
+        const v = raw[i];
+        if (v > mx) { mx = v; imx = i; }
+        if (v < mn) { mn = v; imn = i; }
       }
       frames++; lastFrameT = performance.now();
       if (!frozen) { frame = { raw, high: !!(flags & 1), fid, min: mn, max: mx, imin: imn, imax: imx }; redraw(); }

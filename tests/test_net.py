@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -44,6 +45,41 @@ class Codec(unittest.TestCase):
                     band = rows[:n]
                     out = P.decode_band(P.encode_band(band, codec), codec, n)
                     np.testing.assert_array_equal(out, band)
+
+    def test_fast_encoder_is_byte_identical_to_the_original(self):
+        """The 16-bit encoder must produce exactly the bytes of the original int32 version, so
+        every existing viewer keeps decoding the stream unchanged."""
+        def original(rows):
+            d = rows.astype(np.int32)
+            d[:, 1:] -= rows[:, :-1]
+            s = d.astype(np.int16).astype(np.int32)
+            z = ((s << 1) ^ (s >> 31)).astype(">u2")
+            return zlib.compress(z.view(np.uint8).reshape(-1, 2).T.tobytes(), 1)
+        rng = np.random.default_rng(3)
+        frames = [scene(), scene(5), rng.integers(0, 65536, (192, 256), dtype=np.uint16),
+                  np.zeros((192, 256), np.uint16), np.full((192, 256), 65535, np.uint16),
+                  np.tile(np.array([0, 65535], np.uint16), (192, 128))]          # max-size deltas
+        for rows in frames:
+            for n in (1, 8, 192):
+                self.assertEqual(P.encode_band(rows[:n], P.CODEC_ZLIB), original(rows[:n]))
+
+        def original_packetize(rows, fid, ts, codec, flags=0):     # band by band, as before
+            out, n, r = [], rows.shape[0], 0
+            while r < n:
+                cnt, c = min(P.BAND_ROWS[codec], n - r), codec
+                enc = original if codec == P.CODEC_ZLIB else (lambda b: P.encode_band(b, P.CODEC_RAW))
+                payload = enc(rows[r:r + cnt])
+                while len(payload) > P.PAYLOAD and cnt > 1:
+                    cnt //= 2
+                    payload = enc(rows[r:r + cnt])
+                if len(payload) > P.PAYLOAD:
+                    c, payload = P.CODEC_RAW, P.encode_band(rows[r:r + cnt], P.CODEC_RAW)
+                out.append(P.HEADER.pack(P.MAGIC, P.VERSION, c, flags, fid, ts, r, cnt) + payload)
+                r += cnt
+            return out
+        for rows in frames:
+            for codec in P.CODECS:
+                self.assertEqual(P.packetize(rows, 9, 77, codec, 1), original_packetize(rows, 9, 77, codec, 1))
 
     def test_packets_fit_and_cover_the_frame(self):
         rng = np.random.default_rng(2)
