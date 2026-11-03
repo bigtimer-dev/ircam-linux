@@ -8,6 +8,7 @@ Design and measurements: [../docs/WIRELESS_PLAN.md](../docs/WIRELESS_PLAN.md).
 |---|---|
 | `ircam_bridge.py` | Reads the camera (V4L2 + vendor channel) and sends IRW1 frames. `--demo` runs without a camera |
 | `ircam_netd.py` + `setup.html` | WiFi manager (home network ↔ hotspot fallback), captive portal, setup page on port 80. `--fake --port 8080` runs a simulated version on a PC |
+| `ircam_web.py` + `web/` | Optional browser viewer (iPhone, iPad, any browser) on port 8080. Off until switched on from the setup page |
 | `install-pi.sh` | Installs everything on the Pi (packages, services, USB host mode, WiFi tuning) |
 | `deploy.sh` | Copies the bridge from the PC to the Pi over SSH and runs the installer |
 | `system/` | systemd units and NetworkManager config used by the installer |
@@ -68,6 +69,23 @@ reader.
   hotspot returns in about 15 s and the page says so).
 - "Switch to hotspot now" holds the hotspot for 5 minutes, then the Pi goes back to known networks.
 
+## Browser viewer (iPhone / iPad)
+
+iOS doesn't allow apps to talk to the P2 Pro over USB, so iPhones watch through the bridge in Safari.
+
+1. Open the setup page (`http://p2pro.local`, or `http://10.42.0.1` on the hotspot).
+2. **Browser viewer → Turn on** (from the home network it asks for the PIN).
+3. Open the link it shows (`http://p2pro.local:8080`) in Safari. Share → **Add to Home Screen**
+   gives it an app icon and full screen.
+
+It has live view, max/min/centre readouts, tap-to-measure, 52 palettes, Low/High range, rotate,
+mirror, freeze, snapshot (Share → Save Image), emissivity and °C/°F. Needs iOS 16.4 or newer.
+
+It's an add-on: it reads frames from a local socket on the Pi (`--tap`), separate from the IRW1
+viewer slot, so IRCAM on the PC or Android keeps streaming while a browser watches. With no
+browser connected the bridge does no extra work. **Turn off** stops and disables the service
+(`ircam-web`); the choice survives reboots and updates.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -77,7 +95,8 @@ reader.
 | Camera never detected, `dmesg` shows nothing at all when plugging | The adapter/cable has no data wires, or it's in the PWR port. Many micro-USB→USB-C adapters are charge-only. A phone saying **"Analog audio accessory detected"** through the adapter means its USB-C CC pins are miswired: use another adapter. Check the port directly: `sudo grep HPRT0 /sys/kernel/debug/usb/3f980000.usb/regdump` (bit 0 = device connected) |
 | Hotspot doesn't start | WiFi country not set: `sudo raspi-config nonint do_wifi_country US` (your code), then reboot |
 | Stutter / loss | Run `journalctl -u ircam-bridge -f`. Move closer, check that 2.4 GHz isn't crowded, check the power supply (≥ 2 A) |
-| Logs | `ssh pi@p2pro.local journalctl -u ircam-bridge -u ircam-netd -f` |
+| Browser viewer shows "Can't reach the bridge" | Is it switched on (setup page)? Same WiFi? Check `journalctl -u ircam-web -f` |
+| Logs | `ssh pi@p2pro.local journalctl -u ircam-bridge -u ircam-netd -u ircam-web -f` |
 
 Update after code changes: run `bridge/deploy.sh pi@p2pro.local` again.
 Remove: `bridge/deploy.sh pi@p2pro.local --uninstall`.

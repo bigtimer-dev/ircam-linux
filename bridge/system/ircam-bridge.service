@@ -11,7 +11,7 @@ RuntimeDirectory=ircam-bridge
 RuntimeDirectoryMode=0755
 # full CPU speed while streaming (the '+' runs this line as root)
 ExecStartPre=+/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$g"; done || true'
-ExecStart=/usr/bin/python3 /opt/ircam-bridge/ircam_bridge.py --status-file /run/ircam-bridge/status.json
+ExecStart=/usr/bin/python3 /opt/ircam-bridge/ircam_bridge.py --status-file /run/ircam-bridge/status.json --tap /run/ircam-bridge/tap.sock
 Restart=always
 RestartSec=2
 Nice=-5

@@ -104,6 +104,15 @@ details[open] summary { margin-bottom: 8px; }
     <div class="btns"><button class="btn" id="b-dismiss">Just use the hotspot</button></div>
   </section>
 
+  <section class="card" id="c-web">
+    <h2>Browser viewer (iPhone, iPad, any browser)</h2>
+    <div class="row"><span>State</span><span id="w-state">…</span></div>
+    <div class="row" id="w-link-row" hidden><span>Open</span><span><a id="w-link" href="#" target="_blank" rel="noopener"></a></span></div>
+    <p class="hint" id="w-hint">Watch the camera in Safari without installing anything. It runs next to IRCAM:
+      both can watch at the same time. While it's off, nothing changes on the bridge.</p>
+    <div class="btns"><button class="btn primary" id="b-web">Turn on</button></div>
+  </section>
+
   <section class="card">
     <h2>Connect to a WiFi network</h2>
     <ul class="nets" id="nets"><li class="muted" style="padding:8px 0">Loading…</li></ul>
@@ -225,7 +234,37 @@ function renderStatus() {
     : "Changes from the home network ask for the PIN. It is shown here when you connect via the hotspot.";
   $("versions").textContent = "bridge " + (b ? b.bridge : "–") + " · netd " + st.netd;
   $("b-dismiss").disabled = false;
+  renderWeb(b);
 }
+
+let webBusy = false;
+function renderWeb(b) {
+  const w = st.web || {}, s = $("w-state"), btn = $("b-web");
+  s.replaceChildren();
+  if (w.missing) s.append(pill("Not installed", "err"), " re-run the bridge installer");
+  else if (w.enabled && w.active) {
+    const n = b && b.web_viewers ? b.web_viewers : 0;
+    s.append(pill("On", "ok"), n ? " " + n + (n === 1 ? " browser watching" : " browsers watching") : "");
+  } else if (w.enabled) s.append(pill("Starting…", "warn"));
+  else s.append(pill("Off", "warn"));
+  const url = "http://" + location.hostname + ":" + (w.port || 8080) + "/";
+  $("w-link").href = url; $("w-link").textContent = url.replace(/\/$/, "");
+  $("w-link-row").hidden = !(w.enabled && w.active);
+  $("w-hint").textContent = w.enabled
+    ? "Open the link in Safari, then Share → Add to Home Screen to get an app icon. Works on the hotspot too (http://10.42.0.1:" + (w.port || 8080) + ")."
+    : "Watch the camera in Safari without installing anything. It runs next to IRCAM: both can watch at the same time. While it's off, nothing changes on the bridge.";
+  if (!webBusy) { btn.disabled = !!w.missing; btn.textContent = w.enabled ? "Turn off" : "Turn on"; btn.className = "btn " + (w.enabled ? "danger" : "primary"); }
+}
+$("b-web").onclick = async () => {
+  const enable = !(st && st.web && st.web.enabled), btn = $("b-web");
+  webBusy = true; btn.disabled = true; btn.replaceChildren(el("span", { class: "spin" }), enable ? " Turning on…" : " Turning off…");
+  try {
+    const j = await api("/api/web", { enable });
+    if (st) st.web = j.web;
+    toast(enable ? "Browser viewer is on." : "Browser viewer is off.");
+  } catch (e) { toast(e.message); }
+  webBusy = false; if (st) renderWeb(st.bridge); poll();
+};
 
 function renderNets() {
   const ul = $("nets"); ul.replaceChildren();

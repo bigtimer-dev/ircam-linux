@@ -300,6 +300,55 @@ class FakeNM:
         pass
 
 
+# ------------------------------------------------------------------------------ browser viewer
+WEB_UNIT = "ircam-web.service"
+WEB_PORT = 8080
+
+
+class WebService:
+    """The optional browser viewer (ircam_web.py) as a systemd unit, switched from the setup page.
+    enable --now / disable --now, so the choice survives reboots."""
+
+    def __init__(self, unit=WEB_UNIT, port=WEB_PORT):
+        self.unit, self.port = unit, port
+        self._cache, self._cache_t = None, 0.0
+
+    def _systemctl(self, *args):
+        try:
+            r = subprocess.run(["systemctl", *args, self.unit], capture_output=True, text=True, timeout=30)
+            return r.returncode, (r.stdout + r.stderr).strip()
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return 1, str(e)
+
+    def state(self):
+        if self._cache and time.monotonic() - self._cache_t < 2:
+            return self._cache
+        installed = self._systemctl("cat")[0] == 0
+        st = {"enabled": self._systemctl("is-enabled")[0] == 0,
+              "active": self._systemctl("is-active")[0] == 0, "port": self.port}
+        if not installed:
+            st["missing"] = True
+        self._cache, self._cache_t = st, time.monotonic()
+        return st
+
+    def set(self, enable):
+        rc, out = self._systemctl("enable" if enable else "disable", "--now")
+        self._cache = None
+        return rc == 0, out
+
+
+class FakeWebService:
+    def __init__(self, port=WEB_PORT):
+        self.enabled, self.port = False, port
+
+    def state(self):
+        return {"enabled": self.enabled, "active": self.enabled, "port": self.port}
+
+    def set(self, enable):
+        self.enabled = bool(enable)
+        return True, ""
+
+
 # ------------------------------------------------------------------------------ manager
 def classify_error(msg):
     m = (msg or "").lower()
@@ -313,8 +362,9 @@ def classify_error(msg):
 
 
 class Manager:
-    def __init__(self, nm, cfg, cfg_path, status_path=STATUS_PATH):
+    def __init__(self, nm, cfg, cfg_path, status_path=STATUS_PATH, web=None):
         self.nm, self.cfg, self.cfg_path, self.status_path = nm, cfg, cfg_path, status_path
+        self.web = web or FakeWebService()
         self.lock = threading.RLock()         # serializes all radio changes
         self.mode = "starting"                 # starting | searching | client | hotspot | switching
         self.message = ""
@@ -502,7 +552,7 @@ class Manager:
                "ssid": st.get("ssid"), "ip": st.get("ip"), "signal": st.get("signal"),
                "hotspot_ssid": self.cfg["hotspot_ssid"], "hostname": socket.gethostname(),
                "hold_hotspot": time.monotonic() < self.hold_until, "via_hotspot": via_hotspot,
-               "netd": __version__, "bridge": self.bridge_status()}
+               "netd": __version__, "bridge": self.bridge_status(), "web": self.web.state()}
         if via_hotspot:
             res["pin"] = self.cfg["pin"]
             res["hotspot_password"] = self.cfg["hotspot_password"]
@@ -657,6 +707,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"error": "Use 1–32 letters, digits or '-' (not at the ends)."}, 400)
             mgr.set_name(name)
             return self._json({"ok": True})
+        if path == "/api/web":
+            enable = body.get("enable")
+            if not isinstance(enable, bool):
+                return self._json({"error": "enable must be true or false"}, 400)
+            ok, out = mgr.web.set(enable)
+            log.info("browser viewer %s%s", "enabled" if enable else "disabled", "" if ok else " FAILED: " + out)
+            if not ok:
+                return self._json({"error": "Could not switch the browser viewer: " + out[-160:]}, 500)
+            return self._json({"ok": True, "web": mgr.web.state()})
         self._json({"error": "not found"}, 404)
 
 
@@ -676,7 +735,7 @@ def main():
     nm = FakeNM(cfg["iface"]) if a.fake else NM(cfg["iface"])
     if a.fake:
         cfg["grace_s"] = min(cfg["grace_s"], 5)
-    mgr = Manager(nm, cfg, a.config, a.status_file)
+    mgr = Manager(nm, cfg, a.config, a.status_file, FakeWebService() if a.fake else WebService())
     page = (Path(__file__).resolve().parent / "setup.html").read_bytes()
     web = Web((a.bind, a.port), mgr, page, a.fake)
     threading.Thread(target=mgr.run, daemon=True, name="manager").start()

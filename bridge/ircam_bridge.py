@@ -14,6 +14,7 @@ import logging
 import os
 import secrets
 import socket
+import struct
 import sys
 import threading
 import time
@@ -33,6 +34,14 @@ __version__ = "0.1.0"
 log = logging.getLogger("ircam-bridge")
 FRAME_BYTES = P.WIDTH * P.FRAME_ROWS * 2
 SUB_TIMEOUT = 3.0
+
+# Local tap (--tap): a Unix socket for other programs on the Pi (ircam_web.py, the browser
+# viewer). It is separate from the IRW1 viewer slot, so it never takes the stream away from
+# ircam-linux / ircam-android. Messages to the client: u32 length + 1 byte kind + body.
+#   kind F: TAP_FRAME header + the temperature half (192x256 u16 little-endian)
+#   kind J: JSON (replies to commands, which arrive as JSON lines)
+TAP_LEN = struct.Struct("<Ic")
+TAP_FRAME = struct.Struct("<IQB")          # frame_id ts_us flags
 
 
 def now_us():
@@ -198,20 +207,25 @@ class Bridge:
         self.tcp.settimeout(1.0)
         self.data_port = self.udp.getsockname()[1]
         self.ctrl_port = self.tcp.getsockname()[1]
+        self.tap = None
+        self.tap_conns = set()
+        self.web_viewers = 0          # browsers watching through the tap (reported by ircam-web)
 
     # threads -------------------------------------------------------------------------
-    def start(self, status_file=None):
+    def start(self, status_file=None, tap=None):
         for fn in (self._capture_loop, self._send_loop, self._sub_loop, self._accept_loop):
             threading.Thread(target=fn, daemon=True, name=fn.__name__).start()
         if status_file:
             threading.Thread(target=self._status_file_loop, args=(status_file,), daemon=True).start()
+        if tap:
+            self._open_tap(tap)
         log.info("listening: control tcp/%d, data udp/%d", self.ctrl_port, self.data_port)
 
     def stop(self):
         self.alive = False
         with self.cond:
             self.cond.notify_all()
-        for s in (self.ctrl_conn, self.tcp, self.udp):
+        for s in (self.ctrl_conn, self.tcp, self.udp, self.tap, *list(self.tap_conns)):
             hangup(s)
         self.cam.close()
 
@@ -310,7 +324,8 @@ class Bridge:
         return {"camera_ok": self.cam_ok, "camera": self.cam.model, "cam_fps": round(fps, 1),
                 "viewer": self.client_addr[0] if (self.streaming and self.client_addr) else None,
                 "sent": self.sent_frames, "skipped": self.skipped, "rssi_dbm": wifi_rssi(self.iface),
-                "cpu_temp": cpu_temp(), "battery_pct": pisugar_battery(), "bridge": __version__}
+                "cpu_temp": cpu_temp(), "battery_pct": pisugar_battery(), "bridge": __version__,
+                "web_viewers": self.web_viewers if self.tap_conns else 0}
 
     def _status_file_loop(self, path):
         """Publish the status for the setup page (it must not take over the viewer slot)."""
@@ -323,6 +338,100 @@ class Bridge:
             except OSError as e:
                 log.debug("status file: %s", e)
             time.sleep(2)
+
+    # local tap -----------------------------------------------------------------------
+    def _open_tap(self, path):
+        path = Path(path)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        self.tap = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.tap.bind(str(path))
+        os.chmod(path, 0o660)                 # the bridge user and its group only
+        self.tap.listen(4)
+        self.tap.settimeout(1.0)
+        threading.Thread(target=self._tap_accept, daemon=True, name="tap").start()
+        log.info("local tap on %s", path)
+
+    def _tap_accept(self):
+        while self.alive:
+            try:
+                conn, _ = self.tap.accept()
+            except OSError:
+                continue
+            if len(self.tap_conns) >= 4:
+                hangup(conn)
+                continue
+            self.tap_conns.add(conn)
+            threading.Thread(target=self._tap_serve, args=(conn,), daemon=True).start()
+
+    @staticmethod
+    def _tap_send(conn, lock, kind, body):
+        with lock:
+            conn.sendall(TAP_LEN.pack(len(body) + 1, kind) + body)
+
+    def _tap_serve(self, conn):
+        """Frames go out as they are captured (the newest one; a slow reader skips frames).
+        Commands are read on a second thread."""
+        lock = threading.Lock()
+        conn.settimeout(5.0)
+        log.info("tap client connected")
+
+        def commands():
+            rd = P.LineReader(conn)
+            try:
+                while self.alive:
+                    try:
+                        msg = rd.read()
+                    except socket.timeout:
+                        continue
+                    reply = self._tap_cmd(msg)
+                    reply["id"] = msg.get("id")
+                    self._tap_send(conn, lock, b"J", json.dumps(reply, separators=(",", ":")).encode())
+            except (OSError, P.ProtocolError):
+                pass
+            hangup(conn)
+
+        threading.Thread(target=commands, daemon=True).start()
+        last_id = None
+        try:
+            while self.alive:
+                with self.cond:
+                    self.cond.wait_for(lambda: not self.alive or (self.latest and self.latest[2] != last_id), 1.0)
+                    item = self.latest
+                if not self.alive or item is None or item[2] == last_id:
+                    continue
+                rows, ts, fid = item
+                last_id = fid
+                flags = P.FLAG_HIGH_RANGE if self.high else 0
+                body = TAP_FRAME.pack(fid, ts, flags) + np.ascontiguousarray(rows[P.TEMP_ROW0:], "<u2").tobytes()
+                self._tap_send(conn, lock, b"F", body)
+        except OSError:
+            pass
+        finally:
+            self.tap_conns.discard(conn)
+            hangup(conn)
+            log.info("tap client gone")
+
+    def _tap_cmd(self, msg):
+        cmd = msg.get("cmd")
+        if cmd == "status":
+            return {"ok": True, **self.status(), "high": self.high, "can_range": bool(self.cam.can_range),
+                    "model": self.cam.model}
+        if cmd == "viewers":
+            self.web_viewers = max(0, int(msg.get("n", 0) or 0))
+            return {"ok": True}
+        if cmd == "set_range":
+            if not self.cam.can_range:
+                return {"ok": False, "error": "range switching unavailable"}
+            high = bool(msg.get("high"))
+            with self.cam_lock:
+                self.cam.set_high_range(high)
+            self.high = high
+            log.info("range set to %s (browser viewer)", "high" if high else "low")
+            return {"ok": True, "high": high}
+        return {"ok": False, "error": f"unknown command {cmd!r}"}
 
     # control -------------------------------------------------------------------------
     def _serve(self, conn, addr):
@@ -402,6 +511,7 @@ def main():
     ap.add_argument("--ctrl-port", type=int, default=P.CTRL_PORT)
     ap.add_argument("--iface", default="wlan0", help="WiFi interface for the RSSI readout")
     ap.add_argument("--status-file", help="write a JSON status here every 2 s (for the setup page)")
+    ap.add_argument("--tap", help="also offer frames on this local Unix socket (for ircam_web.py)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
@@ -409,7 +519,7 @@ def main():
                         else "%(asctime)s %(levelname)s %(message)s")
     cam = DemoCamera() if a.demo else RealCamera(a.device)
     br = Bridge(cam, a.bind, a.data_port, a.ctrl_port, a.iface)
-    br.start(a.status_file)
+    br.start(a.status_file, a.tap)
     try:
         while True:
             time.sleep(3600)

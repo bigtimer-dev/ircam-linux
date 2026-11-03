@@ -34,9 +34,10 @@ die()  { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 if [ "$UNINSTALL" = 1 ]; then
   say "Removing the bridge"
-  systemctl disable --now ircam-bridge.service ircam-netd.service 2>/dev/null || true
+  systemctl disable --now ircam-web.service ircam-bridge.service ircam-netd.service 2>/dev/null || true
   nmcli con delete p2pro-hotspot 2>/dev/null || true
   rm -f /etc/systemd/system/ircam-bridge.service /etc/systemd/system/ircam-netd.service \
+        /etc/systemd/system/ircam-web.service \
         /etc/NetworkManager/dnsmasq-shared.d/captive.conf \
         /etc/NetworkManager/conf.d/90-ircam-wifi-powersave.conf \
         /etc/udev/rules.d/99-ircam-linux.rules
@@ -48,7 +49,7 @@ if [ "$UNINSTALL" = 1 ]; then
 fi
 
 command -v nmcli >/dev/null || die "NetworkManager (nmcli) not found. Use Raspberry Pi OS Bookworm or newer."
-for f in bridge/ircam_bridge.py bridge/ircam_netd.py bridge/setup.html ircam/sources.py; do
+for f in bridge/ircam_bridge.py bridge/ircam_netd.py bridge/ircam_web.py bridge/setup.html bridge/web/viewer.html ircam/sources.py; do
   [ -f "$SRC/$f" ] || die "missing $SRC/$f (run from a copy of the ircam-linux repo)"
 done
 
@@ -64,7 +65,8 @@ usermod -a -G video,plugdev ircam
 say "Copying the bridge to $DEST"
 rm -rf "$DEST.new"
 mkdir -p "$DEST.new"
-cp "$SRC/bridge/ircam_bridge.py" "$SRC/bridge/ircam_netd.py" "$SRC/bridge/setup.html" "$DEST.new/"
+cp "$SRC/bridge/ircam_bridge.py" "$SRC/bridge/ircam_netd.py" "$SRC/bridge/ircam_web.py" "$SRC/bridge/setup.html" "$DEST.new/"
+cp -r "$SRC/bridge/web" "$DEST.new/web"
 cp -r "$SRC/ircam" "$DEST.new/ircam"
 rm -rf "$DEST.new/ircam/ui" "$DEST.new/ircam/data"
 find "$DEST.new" -name __pycache__ -prune -exec rm -rf {} +
@@ -96,6 +98,9 @@ systemctl disable --now hciuart.service bluetooth.service 2>/dev/null || true
 say "Services"
 install -m 644 "$SRC/bridge/system/ircam-bridge.service" /etc/systemd/system/ircam-bridge.service
 install -m 644 "$SRC/bridge/system/ircam-netd.service" /etc/systemd/system/ircam-netd.service
+# the browser viewer is optional: installed, but only switched on from the setup page (an
+# earlier on/off choice is kept across updates)
+install -m 644 "$SRC/bridge/system/ircam-web.service" /etc/systemd/system/ircam-web.service
 systemctl daemon-reload
 systemctl enable ircam-bridge.service ircam-netd.service >/dev/null
 # first start of netd writes $CONF_DIR/netd.json with a random hotspot password and PIN
@@ -103,6 +108,7 @@ systemctl restart ircam-netd.service
 systemctl reload NetworkManager 2>/dev/null || true
 for _ in $(seq 20); do [ -f "$CONF_DIR/netd.json" ] && break; sleep 0.5; done
 systemctl restart ircam-bridge.service
+if systemctl is-enabled --quiet ircam-web.service; then systemctl restart ircam-web.service; fi
 
 COUNTRY=$(iw reg get 2>/dev/null | awk '/^country/ {sub(":","",$2); print $2; exit}')
 if [ -z "$COUNTRY" ] || [ "$COUNTRY" = "00" ]; then
@@ -123,6 +129,7 @@ cat <<EOF
 
   Address in IRCAM:   $(hostname).local   (on the hotspot: 10.42.0.1)
   Setup page:         http://$(hostname).local   or   http://10.42.0.1 on the hotspot
+  Browser viewer:     turn it on from the setup page, then open http://$(hostname).local:8080
   Hotspot:            $HS_SSID   password: $HS_PW
   PIN (changes from the home network): $PIN
   (also saved to $BOOT_DIR/p2pro-bridge.txt)

@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Thermal">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>P2 Pro Thermal</title>
+<style>
+:root {
+  --bg: #000; --bar: rgba(22, 24, 28, .92); --fg: #f1f3f5; --muted: #9aa1ab; --line: #2e333b;
+  --accent: #ff7a33; --hot: #ff5c5c; --cold: #5cb8ff; --ok: #51cf66; --warn: #ffa94d;
+  --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left); --sar: env(safe-area-inset-right);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden;
+  font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+#app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 10px; padding: calc(8px + var(--sat)) calc(12px + var(--sar)) 8px calc(12px + var(--sal));
+  background: var(--bar); border-bottom: 1px solid var(--line); flex: none; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.err { background: var(--hot); }
+#status { flex: 1; min-width: 0; font-size: .82rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.readouts { display: flex; gap: 14px; font-variant-numeric: tabular-nums; font-weight: 650; font-size: .95rem; }
+.readouts span b { font-weight: 500; color: var(--muted); font-size: .72rem; margin-right: 3px; }
+#r-max { color: var(--hot); } #r-min { color: var(--cold); }
+#stage { position: relative; flex: 1; min-height: 0; display: flex; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+#msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+  padding: 24px; color: var(--muted); pointer-events: none; }
+#msg div { max-width: 320px; }
+#msg b { display: block; color: var(--fg); font-size: 1.05rem; margin-bottom: 6px; }
+nav { display: flex; justify-content: space-around; gap: 4px; flex: none; background: var(--bar); border-top: 1px solid var(--line);
+  padding: 6px calc(6px + var(--sar)) calc(6px + var(--sab)) calc(6px + var(--sal)); }
+nav button { flex: 1; max-width: 92px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px;
+  background: none; border: 0; border-radius: 10px; color: var(--fg); font: inherit; font-size: .7rem; cursor: pointer; }
+nav button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+nav button:active { background: rgba(255,255,255,.08); }
+nav button.on { color: var(--accent); }
+nav button:disabled { opacity: .35; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 70%; overflow-y: auto; z-index: 5;
+  background: #1b1d22; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0;
+  padding: 10px calc(16px + var(--sar)) calc(18px + var(--sab)) calc(16px + var(--sal));
+  transform: translateY(105%); transition: transform .22s ease; }
+.sheet.open { transform: none; }
+.sheet h3 { margin: 6px 0 10px; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.grab { width: 38px; height: 4px; border-radius: 2px; background: var(--line); margin: 0 auto 6px; }
+#scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 4; }
+.pals { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.pal { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 10px; border: 1px solid var(--line);
+  background: none; color: var(--fg); font: inherit; font-size: .75rem; cursor: pointer; text-align: left; }
+.pal canvas { width: 100%; height: 16px; border-radius: 4px; display: block; }
+.pal.on { border-color: var(--accent); }
+.set { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.set:first-of-type { border-top: 0; }
+.set label { flex: 1; }
+.set small { display: block; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { background: none; border: 0; color: var(--fg); font: inherit; padding: 6px 12px; cursor: pointer; }
+.seg button.on { background: var(--accent); color: #111; font-weight: 650; }
+input[type=range] { width: 150px; accent-color: var(--accent); }
+input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
+#toast { position: fixed; left: 50%; top: calc(64px + var(--sat)); transform: translateX(-50%); z-index: 6;
+  background: rgba(241,243,245,.95); color: #111; padding: 8px 14px; border-radius: 10px; font-size: .85rem;
+  opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
+#toast.show { opacity: 1; }
+.about { color: var(--muted); font-size: .8rem; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="dot" id="dot"></span>
+    <span id="status">Connecting…</span>
+    <div class="readouts">
+      <span id="r-max"><b>MAX</b>–</span>
+      <span id="r-min"><b>MIN</b>–</span>
+      <span id="r-spot"><b id="r-spot-l">CTR</b><i id="r-spot-v" style="font-style:normal">–</i></span>
+    </div>
+  </header>
+  <div id="stage">
+    <canvas id="view"></canvas>
+    <div id="msg"><div><b>Connecting to the bridge…</b>Make sure this phone is on the same WiFi as the P2 Pro bridge (or on its hotspot).</div></div>
+  </div>
+  <nav>
+    <button id="b-pal"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.9-.7-1.3-.7-2.2 0-.9.7-1.6 1.6-1.6H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></svg>Palette</button>
+    <button id="b-range"><svg viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0z"/><path d="M12 11v5"/></svg><span id="range-l">Low</span></button>
+    <button id="b-freeze"><svg viewBox="0 0 24 24"><rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/></svg><span id="freeze-l">Freeze</span></button>
+    <button id="b-snap"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Snapshot</button>
+    <button id="b-rot"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>Rotate</button>
+    <button id="b-set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</button>
+  </nav>
+</div>
+
+<div id="scrim" hidden></div>
+<section class="sheet" id="s-pal"><div class="grab"></div><h3>Palette</h3><div class="pals" id="pals"></div>
+  <h3 style="margin-top:16px">All palettes</h3><div class="pals" id="pals-all"></div></section>
+<section class="sheet" id="s-set"><div class="grab"></div><h3>Settings</h3>
+  <div class="set"><label>Units</label><div class="seg" id="seg-unit"><button data-v="C">°C</button><button data-v="F">°F</button></div></div>
+  <div class="set"><label>Emissivity <small id="emi-v"></small></label><input type="range" id="emi" min="0.10" max="1.00" step="0.01"></div>
+  <div class="set"><label>Smooth image</label><input type="checkbox" id="smooth"></div>
+  <div class="set"><label>Invert palette</label><input type="checkbox" id="invert"></div>
+  <div class="set"><label>Mirror image</label><input type="checkbox" id="mirror"></div>
+  <div class="set"><label>Max / min markers</label><input type="checkbox" id="markers"></div>
+  <div class="set"><label>Clear measurement spot <small>Tap the image to place a spot.</small></label><button class="seg" id="b-clear" style="padding:6px 12px;color:var(--fg)">Clear</button></div>
+  <p class="about" id="about"></p>
+</section>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const W = 256, H = 192;
+
+// ------------------------------------------------------------------ settings
+const DEF = { palette: "Iron", unit: "C", emissivity: 0.98, smooth: true, invert: false, mirror: false,
+              markers: true, rotation: 0 };
+let cfg = { ...DEF };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem("ircam-web") || "{}")); } catch (_) {}
+function save() { try { localStorage.setItem("ircam-web", JSON.stringify(cfg)); } catch (_) {} }
+
+// ------------------------------------------------------------------ temperature (pool 2, as ircam-linux)
+const AMBIENT = 25.1, REFLECTED = 25.1, HUMIDITY = 0.45, DISTANCE = 1.0;
+let corrFactor = 1, corrOffset = 0;
+function updateCorrection() {
+  const omega = HUMIDITY * Math.exp(AMBIENT ** 3 * 0.68455e-6 + AMBIENT ** 2 * -0.000278160 + AMBIENT * 0.069390 + 1.5587);
+  const d = Math.trunc(Math.max(0, DISTANCE)) & 0xFFFF, so = Math.sqrt(Math.max(omega, 0)), k = 1.9;
+  const tau = k * Math.exp(-Math.sqrt(d) * (0.0066 + -0.0023 * so)) + (1 - k) * Math.exp(-Math.sqrt(d) * (0.0126 + -0.0067 * so));
+  const sigma = 0.0000000567, e = cfg.emissivity;
+  const refl = (1 - e) * tau * sigma * REFLECTED, amb = (1 - tau) * sigma * AMBIENT;
+  const ets = e * tau ? 1 / (e * tau * sigma) : 0;
+  corrOffset = -(refl * ets) - (amb * ets);
+  corrFactor = ets * sigma * e;
+}
+const toC = (raw) => (raw * 0.015625 - 273.15) * corrFactor + corrOffset;
+function fmt(c) {
+  if (c == null || !isFinite(c)) return "–";
+  const v = cfg.unit === "F" ? c * 1.8 + 32 : c;
+  return v.toFixed(1) + "°";
+}
+
+// ------------------------------------------------------------------ palettes
+let palNames = [], palFeatured = [], palData = null, palSize = 256, lut = new Uint32Array(256);
+async function loadPalettes() {
+  const [j, b] = await Promise.all([fetch("palettes.json").then(r => r.json()), fetch("palettes.bin").then(r => r.arrayBuffer())]);
+  palNames = j.names; palFeatured = j.featured; palSize = j.size; palData = new Uint8Array(b);
+  if (!palNames.includes(cfg.palette)) cfg.palette = "Iron";
+  buildLut(); buildPaletteSheet();
+}
+function palRGB(name, i) {
+  const o = (Math.max(0, palNames.indexOf(name)) * palSize + i) * 3;
+  return [palData[o], palData[o + 1], palData[o + 2]];
+}
+function buildLut() {
+  lut = new Uint32Array(palSize);
+  for (let i = 0; i < palSize; i++) {
+    const [r, g, b] = palRGB(cfg.palette, cfg.invert ? palSize - 1 - i : i);
+    lut[i] = (255 << 24) | (b << 16) | (g << 8) | r;          // little-endian RGBA
+  }
+  if (frame) render();
+}
+function swatch(name) {
+  const c = document.createElement("canvas"); c.width = 64; c.height = 1;
+  const x = c.getContext("2d"), img = x.createImageData(64, 1);
+  for (let i = 0; i < 64; i++) { const [r, g, b] = palRGB(name, Math.round(i * (palSize - 1) / 63)); img.data.set([r, g, b, 255], i * 4); }
+  x.putImageData(img, 0, 0); return c;
+}
+function buildPaletteSheet() {
+  for (const [box, list] of [[$("pals"), palFeatured], [$("pals-all"), palNames.filter(n => !palFeatured.includes(n))]]) {
+    box.replaceChildren();
+    for (const n of list) {
+      const b = document.createElement("button"); b.className = "pal" + (n === cfg.palette ? " on" : ""); b.dataset.name = n;
+      b.append(swatch(n), n);
+      b.onclick = () => { cfg.palette = n; save(); buildLut(); document.querySelectorAll(".pal").forEach(p => p.classList.toggle("on", p.dataset.name === n)); };
+      box.append(b);
+    }
+  }
+}
+
+// ------------------------------------------------------------------ decoding
+let frame = null;            // { raw: Uint16Array(W*H), high, fid, min, max, imin, imax }
+let busy = false, pending = null, frozen = false, frames = 0, fpsT = performance.now(), fps = 0;
+async function inflate(bytes) {
+  const s = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+async function onFrame(buf) {
+  if (busy) { pending = buf; return; }                 // keep only the newest while decoding
+  busy = true;
+  try {
+    while (buf) {
+      const dv = new DataView(buf);
+      if (dv.getUint32(0, true) !== 0x42575249) break;   // "IRWB"
+      const fid = dv.getUint32(4, true), flags = dv.getUint8(8), rows = dv.getUint8(9), width = dv.getUint16(10, true);
+      if (rows !== H || width !== W) break;
+      const b = await inflate(new Uint8Array(buf, 12));
+      const n = W * H, raw = new Uint16Array(n);
+      let mn = 65535, mx = 0, imn = 0, imx = 0;
+      for (let y = 0; y < H; y++) {
+        let acc = 0;
+        for (let x = 0; x < W; x++) {
+          const i = y * W + x, z = (b[i] << 8) | b[n + i];
+          acc = (acc + ((z >>> 1) ^ -(z & 1))) & 0xFFFF;
+          raw[i] = acc;
+          if (acc > mx) { mx = acc; imx = i; }
+          if (acc < mn) { mn = acc; imn = i; }
+        }
+      }
+      frames++;
+      if (!frozen) { frame = { raw, high: !!(flags & 1), fid, min: mn, max: mx, imin: imn, imax: imx }; render(); }
+      setRangeLabel(!!(flags & 1));
+      buf = pending; pending = null;
+    }
+  } catch (e) { console.warn(e); }
+  busy = false;
+}
+
+// ------------------------------------------------------------------ drawing
+const view = $("view"), vctx = view.getContext("2d");
+const off = document.createElement("canvas"); off.width = W; off.height = H;
+const octx = off.getContext("2d"), oimg = octx.createImageData(W, H), opx = new Uint32Array(oimg.data.buffer);
+let geo = null;              // display transform
+let spot = null;             // {x, y} image pixel
+function layout() {
+  const r = view.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  view.width = Math.round(r.width * dpr); view.height = Math.round(r.height * dpr);
+  const rot = cfg.rotation % 360, side = rot === 90 || rot === 270;
+  const iw = side ? H : W, ih = side ? W : H, barW = 46 * dpr;
+  const s = Math.min((view.width - barW - 8 * dpr) / iw, view.height / ih);
+  const dw = iw * s, dh = ih * s, ox = (view.width - barW - dw) / 2, oy = (view.height - dh) / 2;
+  geo = { s, dw, dh, ox, oy, rot, dpr, barW };
+  if (frame) render();
+}
+function toScreen(x, y) {           // image pixel centre -> canvas pixel
+  let u = cfg.mirror ? W - 1 - x : x, v = y, a, b;
+  u += 0.5; v += 0.5;
+  switch (geo.rot) {
+    case 90: a = H - v; b = u; break;
+    case 180: a = W - u; b = H - v; break;
+    case 270: a = v; b = W - u; break;
+    default: a = u; b = v;
+  }
+  return [geo.ox + a * geo.s, geo.oy + b * geo.s];
+}
+function toImage(px, py) {
+  const a = (px - geo.ox) / geo.s, b = (py - geo.oy) / geo.s;
+  let u, v;
+  switch (geo.rot) {
+    case 90: u = b; v = H - a; break;
+    case 180: u = W - a; v = H - b; break;
+    case 270: u = W - b; v = a; break;
+    default: u = a; v = b;
+  }
+  if (cfg.mirror) u = W - u;
+  const x = Math.floor(u), y = Math.floor(v);
+  return x >= 0 && x < W && y >= 0 && y < H ? { x, y } : null;
+}
+function render(ctx = vctx, g = geo) {
+  if (!frame || !g) return;
+  const { raw, min, max } = frame, span = Math.max(1, max - min), k = (palSize - 1) / span;
+  for (let i = 0; i < raw.length; i++) opx[i] = lut[((raw[i] - min) * k) | 0];
+  octx.putImageData(oimg, 0, 0);
+  const c = ctx.canvas;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.imageSmoothingEnabled = cfg.smooth; ctx.imageSmoothingQuality = "high";
+  ctx.save();
+  ctx.translate(g.ox + g.dw / 2, g.oy + g.dh / 2);
+  ctx.rotate(g.rot * Math.PI / 180);
+  if (cfg.mirror) ctx.scale(-1, 1);
+  ctx.drawImage(off, -W * g.s / 2, -H * g.s / 2, W * g.s, H * g.s);
+  ctx.restore();
+  // markers
+  const T = (i) => toC(raw[i]);
+  if (cfg.markers) {
+    marker(ctx, g, frame.imax % W, (frame.imax / W) | 0, "#ff5c5c", "▲ " + fmt(T(frame.imax)));
+    marker(ctx, g, frame.imin % W, (frame.imin / W) | 0, "#5cb8ff", "▼ " + fmt(T(frame.imin)));
+  }
+  const sp = spot || { x: W / 2, y: H / 2 };
+  cross(ctx, g, sp.x, sp.y, fmt(T(sp.y * W + sp.x)), !!spot);
+  colorbar(ctx, g, toC(min), toC(max));
+  $("r-max").lastChild.textContent = fmt(toC(max));
+  $("r-min").lastChild.textContent = fmt(toC(min));
+  $("r-spot-l").textContent = spot ? "SPOT" : "CTR";
+  $("r-spot-v").textContent = fmt(T(sp.y * W + sp.x));
+}
+function label(ctx, g, x, y, text, color) {
+  const d = g.dpr; ctx.font = `600 ${13 * d}px system-ui, -apple-system, sans-serif`;
+  const w = ctx.measureText(text).width + 10 * d, h = 20 * d;
+  let lx = x + 9 * d, ly = y - h - 6 * d;
+  const maxX = g.ox + g.dw, maxY = g.oy + g.dh;
+  if (lx + w > maxX) lx = x - w - 9 * d;
+  if (ly < g.oy) ly = y + 8 * d;
+  if (ly + h > maxY) ly = maxY - h;
+  ctx.fillStyle = "rgba(0,0,0,.6)"; roundRect(ctx, lx, ly, w, h, 5 * d); ctx.fill();
+  ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.fillText(text, lx + 5 * d, ly + h / 2 + 0.5 * d);
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function marker(ctx, g, x, y, color, text) {
+  const [sx, sy] = toScreen(x, y), d = g.dpr;
+  ctx.lineWidth = 2 * d; ctx.strokeStyle = "#000"; ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(sx, sy, 5 * d, 0, 7); ctx.fill(); ctx.stroke();
+  label(ctx, g, sx, sy, text, color);
+}
+function cross(ctx, g, x, y, text, isSpot) {
+  const [sx, sy] = toScreen(x, y), d = g.dpr, r = 11 * d;
+  for (const [w, col] of [[3.5 * d, "rgba(0,0,0,.7)"], [1.6 * d, "#fff"]]) {
+    ctx.lineWidth = w; ctx.strokeStyle = col; ctx.beginPath();
+    ctx.moveTo(sx - r, sy); ctx.lineTo(sx - 3 * d, sy); ctx.moveTo(sx + 3 * d, sy); ctx.lineTo(sx + r, sy);
+    ctx.moveTo(sx, sy - r); ctx.lineTo(sx, sy - 3 * d); ctx.moveTo(sx, sy + 3 * d); ctx.lineTo(sx, sy + r);
+    if (isSpot) { ctx.moveTo(sx + r * 0.75, sy); ctx.arc(sx, sy, r * 0.75, 0, 7); }
+    ctx.stroke();
+  }
+  label(ctx, g, sx, sy, text, "#fff");
+}
+function colorbar(ctx, g, tmin, tmax) {
+  const d = g.dpr, bw = 12 * d, x = ctx.canvas.width - g.barW + 6 * d, top = g.oy + 18 * d, h = Math.max(20, g.dh - 36 * d);
+  const grd = ctx.createLinearGradient(0, top + h, 0, top);
+  for (let i = 0; i <= 16; i++) {
+    const j = Math.round(i * (palSize - 1) / 16), c = lut[j];
+    grd.addColorStop(i / 16, `rgb(${c & 255},${(c >> 8) & 255},${(c >> 16) & 255})`);
+  }
+  ctx.fillStyle = grd; ctx.fillRect(x, top, bw, h);
+  ctx.font = `600 ${11 * d}px system-ui, -apple-system, sans-serif`; ctx.fillStyle = "#ddd"; ctx.textAlign = "center";
+  ctx.textBaseline = "bottom"; ctx.fillText(fmt(tmax), x + bw / 2, top - 3 * d);
+  ctx.textBaseline = "top"; ctx.fillText(fmt(tmin), x + bw / 2, top + h + 3 * d);
+  ctx.textAlign = "start";
+}
+
+// ------------------------------------------------------------------ connection
+let ws = null, st = {}, lastMsg = 0, wantHigh = null;
+function connect() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { lastMsg = performance.now(); };
+  ws.onmessage = (ev) => {
+    lastMsg = performance.now();
+    if (typeof ev.data === "string") { try { const m = JSON.parse(ev.data); if (m.type === "status") { st = m; showStatus(); } } catch (_) {} }
+    else onFrame(ev.data);
+  };
+  ws.onclose = () => { ws = null; st = {}; showStatus(); setTimeout(connect, 1500); };
+  ws.onerror = () => { try { ws.close(); } catch (_) {} };
+}
+setInterval(() => {                       // a WiFi drop can leave the socket open but silent
+  if (ws && ws.readyState === 1 && performance.now() - lastMsg > 6000) ws.close();
+  const now = performance.now(); fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; showStatus();
+}, 1000);
+
+function showStatus() {
+  const dot = $("dot"), s = $("status"), msg = $("msg");
+  let text, kind, m = null;
+  if (!ws || ws.readyState !== 1) { kind = "err"; text = "Not connected — retrying…";
+    m = ["Can't reach the bridge", "Make sure this phone is on the same WiFi as the P2 Pro bridge (or on its hotspot), then wait a moment."]; }
+  else if (!st.bridge) { kind = "warn"; text = "Bridge service not running";
+    m = st.type ? ["The bridge isn't running", "The browser viewer is on, but the camera bridge service isn't answering."] : ["Connecting…", ""]; }
+  else if (!st.camera_ok) { kind = "warn"; text = "Camera not connected"; m = ["Camera not connected", "Plug the P2 Pro into the bridge's USB port."]; }
+  else {
+    kind = fps > 15 ? "ok" : "warn";
+    const parts = [fps.toFixed(0) + " fps"];
+    if (st.rssi_dbm != null) parts.push(st.rssi_dbm + " dBm");
+    if (st.battery_pct != null) parts.push("🔋" + Math.round(st.battery_pct) + "%");
+    if (frozen) parts.unshift("Frozen");
+    text = parts.join(" · ");
+  }
+  dot.className = "dot " + kind; s.textContent = text;
+  msg.hidden = !m || (frame && kind !== "err" && st.camera_ok);
+  if (m) msg.firstElementChild.replaceChildren(Object.assign(document.createElement("b"), { textContent: m[0] }), m[1]);
+  $("b-range").disabled = !(st.bridge && st.can_range);
+  if (st.bridge && wantHigh == null && st.high != null) setRangeLabel(st.high);
+  $("about").textContent = "P2 Pro bridge " + (st.bridge_version || st.bridge || "–") + " · web viewer " + (st.web || "–") +
+    (st.viewer ? " · also streaming to " + st.viewer : "");
+}
+let curHigh = false;
+function setRangeLabel(high) {
+  if (wantHigh != null && high !== wantHigh) return;  // waiting for the camera to switch
+  wantHigh = null; curHigh = high;
+  $("range-l").textContent = high ? "High" : "Low";
+  $("b-range").classList.toggle("on", high);
+}
+
+// ------------------------------------------------------------------ UI
+function toast(t) { const e = $("toast"); e.textContent = t; e.classList.add("show"); clearTimeout(e._h); e._h = setTimeout(() => e.classList.remove("show"), 2600); }
+function openSheet(id) {
+  for (const s of document.querySelectorAll(".sheet")) s.classList.toggle("open", s.id === id && !s.classList.contains("open"));
+  $("scrim").hidden = !document.querySelector(".sheet.open");
+}
+$("scrim").onclick = () => openSheet(null);
+$("b-pal").onclick = () => openSheet("s-pal");
+$("b-set").onclick = () => openSheet("s-set");
+$("b-rot").onclick = () => { cfg.rotation = (cfg.rotation + 90) % 360; save(); layout(); };
+$("b-freeze").onclick = () => {
+  frozen = !frozen; $("b-freeze").classList.toggle("on", frozen); $("freeze-l").textContent = frozen ? "Live" : "Freeze"; showStatus();
+};
+$("b-range").onclick = () => {
+  if (!ws || ws.readyState !== 1) return;
+  const high = !curHigh; wantHigh = high;
+  ws.send(JSON.stringify({ cmd: "set_range", high }));
+  $("range-l").textContent = "…"; toast(high ? "Switching to the high range (100…550 °C)…" : "Switching to the low range (−20…150 °C)…");
+  setTimeout(() => { if (wantHigh != null) { wantHigh = null; setRangeLabel(curHigh); } }, 6000);
+};
+view.addEventListener("pointerup", (ev) => {
+  if (!geo) return;
+  const p = toImage(ev.offsetX * geo.dpr, ev.offsetY * geo.dpr);
+  if (p) { spot = p; if (frame) render(); }
+});
+$("b-clear").onclick = () => { spot = null; if (frame) render(); toast("Spot cleared; showing the centre."); };
+
+$("b-snap").onclick = async () => {
+  if (!frame) return;
+  const c = document.createElement("canvas"), side = cfg.rotation % 180 !== 0, scale = 4, d = 2;
+  const iw = (side ? H : W) * scale, ih = (side ? W : H) * scale, barW = 46 * d;
+  c.width = iw + barW + 8 * d; c.height = ih;
+  const g = { s: scale, dw: iw, dh: ih, ox: 0, oy: 0, rot: cfg.rotation % 360, dpr: d, barW };
+  render(c.getContext("2d"), g);
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const blob = await new Promise(r => c.toBlob(r, "image/png"));
+  const file = new File([blob], `thermal-${stamp}.png`, { type: "image/png" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === "AbortError") return; }
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast("Snapshot saved.");
+};
+
+function bindSettings() {
+  const seg = $("seg-unit");
+  const paintSeg = () => seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === cfg.unit));
+  seg.onclick = (ev) => { const v = ev.target.dataset.v; if (v) { cfg.unit = v; save(); paintSeg(); if (frame) render(); } };
+  paintSeg();
+  const emi = $("emi"); emi.value = cfg.emissivity; $("emi-v").textContent = (+cfg.emissivity).toFixed(2);
+  emi.oninput = () => { cfg.emissivity = +emi.value; $("emi-v").textContent = cfg.emissivity.toFixed(2); updateCorrection(); save(); if (frame) render(); };
+  for (const k of ["smooth", "invert", "mirror", "markers"]) {
+    $(k).checked = !!cfg[k];
+    $(k).onchange = () => { cfg[k] = $(k).checked; save(); if (k === "invert") buildLut(); else if (frame) render(); };
+  }
+}
+
+window.addEventListener("resize", layout);
+window.addEventListener("orientationchange", () => setTimeout(layout, 200));
+updateCorrection(); bindSettings(); layout();
+if (!("DecompressionStream" in window)) {
+  $("msg").firstElementChild.innerHTML = "<b>This browser is too old</b>Update iOS (16.4 or newer), or use a current Safari, Chrome or Firefox.";
+} else {
+  loadPalettes().catch(() => toast("Palettes failed to load")).finally(connect);
+}
+</script>
+</body>
+</html>
