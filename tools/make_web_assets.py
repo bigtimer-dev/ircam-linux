@@ -3,11 +3,15 @@
 
 - palettes.bin / palettes.json: the 52 built-in palettes, 256 RGB entries each (40 KB)
 - icon-180.png / icon-512.png: home-screen icons
+- keepawake.mp4: a tiny silent black loop; playing it keeps the phone screen on over plain HTTP
+  (the Wake Lock API needs HTTPS). Needs ffmpeg; skipped without it.
 
     python3 tools/make_web_assets.py
 """
 import json
+import shutil
 import struct
+import subprocess
 import sys
 import zlib
 from pathlib import Path
@@ -54,6 +58,10 @@ def main():
     iron = z["Iron"][pick]
     for s in (180, 512):
         png(OUT / f"icon-{s}.png", icon(s, iron))
+    if shutil.which("ffmpeg"):
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=16x16:r=10:d=2",
+                        "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.0", "-pix_fmt", "yuv420p",
+                        "-movflags", "+faststart", "-an", str(OUT / "keepawake.mp4")], check=True)
     print(f"wrote {OUT}: {len(names)} palettes, {len(blob)} bytes")
 
 

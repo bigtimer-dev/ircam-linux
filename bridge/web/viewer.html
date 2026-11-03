@@ -43,9 +43,9 @@ header { display: flex; align-items: center; gap: 10px; flex: none; z-index: 2;
 #r-spot { cursor: pointer; }
 
 #stage { position: relative; flex: 1; min-height: 0; }
-#view { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .3s; }
+#view { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; transition: opacity .3s; }
 #view.stale { opacity: .45; }
-#msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+#msg { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; text-align: center;
   padding: 24px; color: var(--muted); pointer-events: none; }
 #msg div { max-width: 320px; }
 #msg b { display: block; color: var(--fg); font-size: 1.05rem; margin-bottom: 6px; }
@@ -745,10 +745,31 @@ function stopRec() {
 $("b-rec").onclick = () => rec ? stopRec() : startRec();
 
 // ------------------------------------------------------------------ keep the screen on
-let wake = null;
+// Wake Lock needs HTTPS; the bridge serves plain HTTP, so there a tiny silent looping video does the
+// job instead (playing media keeps phones awake). iOS only starts it from a touch, hence the
+// call on every pointerdown.
+let wake = null, awakeVid = null;
 async function keepAwake() {
-  if (!cfg.awake || !("wakeLock" in navigator) || document.visibilityState !== "visible" || wake) return;
-  try { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); } catch (_) {}
+  if (!cfg.awake || document.visibilityState !== "visible") return;
+  if ("wakeLock" in navigator && window.isSecureContext) {
+    if (wake) return;
+    try { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); return; } catch (_) {}
+  }
+  if (!awakeVid) {
+    awakeVid = document.createElement("video");
+    awakeVid.muted = true; awakeVid.loop = true; awakeVid.playsInline = true;
+    for (const a of ["muted", "playsinline", "loop"]) awakeVid.setAttribute(a, "");
+    awakeVid.src = "keepawake.mp4";
+    // full size behind the image: it is solid black like the stage, and browsers only keep the screen on
+    // for videos they consider visible and big enough
+    awakeVid.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none;z-index:0";
+    $("stage").prepend(awakeVid);
+  }
+  if (awakeVid.paused) awakeVid.play().catch(() => {});
+}
+function releaseAwake() {
+  if (wake) { wake.release(); wake = null; }
+  if (awakeVid) awakeVid.pause();
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); else if (rec) stopRec(); });
 
@@ -765,12 +786,11 @@ function bindSettings() {
     $(k).onchange = () => {
       cfg[k] = $(k).checked; save();
       if (k === "invert") buildLut();
-      else if (k === "awake") { if (cfg.awake) keepAwake(); else if (wake) { wake.release(); wake = null; } }
+      else if (k === "awake") { if (cfg.awake) keepAwake(); else releaseAwake(); }
       else if (k === "autohide") poke();
       else redraw();
     };
   }
-  if (!("wakeLock" in navigator)) $("awake").closest(".set").hidden = true;
 }
 function showHelp(on) { $("help").hidden = !on; if (!on && !cfg.helped) { cfg.helped = true; save(); } }
 $("b-help").onclick = () => { openSheet(null); showHelp(true); };

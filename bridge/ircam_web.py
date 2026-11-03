@@ -56,6 +56,7 @@ STATIC = {   # path -> (file in web/, content type)
     "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
     "/icon-180.png": ("icon-180.png", "image/png"),
     "/favicon.ico": ("icon-180.png", "image/png"),
+    "/keepawake.mp4": ("keepawake.mp4", "video/mp4"),
     "/icon-512.png": ("icon-512.png", "image/png"),
 }
 
