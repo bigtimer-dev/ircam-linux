@@ -42,7 +42,8 @@ header { display: flex; align-items: center; gap: 10px; flex: none; z-index: 2;
 #r-max { color: var(--hot); } #r-min { color: var(--cold); }
 #r-spot { cursor: pointer; }
 
-#stage { position: relative; flex: 1; min-height: 0; }
+#stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#pane { position: relative; flex: 1; min-height: 0; }
 #view { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; transition: opacity .3s; }
 #view.stale { opacity: .45; }
 #msg { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; text-align: center;
@@ -60,12 +61,17 @@ header { display: flex; align-items: center; gap: 10px; flex: none; z-index: 2;
 @keyframes flash { from { opacity: .75; } to { opacity: 0; } }
 
 /* floating tools over the image */
-#tools { position: absolute; left: calc(10px + var(--sal)); top: 10px; z-index: 2; display: flex; flex-direction: column; gap: 8px; }
-.fab { width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(255,255,255,.12); display: grid; place-items: center;
-  background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: pointer; padding: 0; }
-.fab svg.i { width: 21px; height: 21px; }
-.fab.on { color: #111; background: var(--accent); border-color: var(--accent); }
-.fab.only-fs { display: none; }
+#tools { flex: none; display: flex; justify-content: center; gap: 2px; z-index: 2;
+  padding: 6px calc(8px + var(--sar)) 4px calc(8px + var(--sal)); }
+.tool { flex: 0 1 72px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 2px 0;
+  background: none; border: 0; font-size: .68rem; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.tool .ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--fg);
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); }
+.tool .ic svg.i { width: 21px; height: 21px; }
+.tool:active .ic { background: rgba(255,255,255,.18); }
+.tool.on { color: var(--accent); }
+.tool.on .ic { color: #111; background: var(--accent); border-color: var(--accent); }
+.tool.only-fs { display: none; }
 #zoom-l { position: absolute; right: 56px; bottom: 12px; z-index: 2; font-size: .8rem; background: var(--glass);
   padding: 4px 10px; border-radius: 99px; cursor: pointer; }
 
@@ -87,8 +93,8 @@ nav #b-snap:active span { transform: scale(.88); }
 body.fs header { position: absolute; left: 0; right: 0; top: 0; background: var(--glass); border: 0;
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 body.fs nav { display: none; }
-body.fs #tools { top: calc(58px + var(--sat)); }
-body.fs .fab.only-fs { display: grid; }
+body.fs #tools { padding-top: calc(50px + var(--sat)); }
+body.fs .tool.only-fs { display: flex; }
 body.fs.idle header, body.fs.idle #tools, body.fs.idle #zoom-l { opacity: 0; pointer-events: none; }
 body.fs header, body.fs #tools, body.fs #zoom-l { transition: opacity .3s; }
 
@@ -101,8 +107,13 @@ body.fs header, body.fs #tools, body.fs #zoom-l { transition: opacity .3s; }
   nav { flex-direction: column; height: 100%; width: calc(84px + var(--sar)); border-top: 0; border-left: 1px solid var(--line);
     padding: calc(6px + var(--sat)) calc(6px + var(--sar)) calc(6px + var(--sab)) 6px; }
   nav button { flex: 0 1 auto; }
-  #tools { top: 50px; }
-  body.fs #tools { top: 50px; }
+  #stage { flex-direction: row; }
+  #tools, body.fs #tools { flex-direction: column; justify-content: flex-start; gap: 4px; overflow-y: auto;
+    scrollbar-width: none; padding: 46px 2px 4px calc(4px + var(--sal)); }
+  #tools::-webkit-scrollbar { display: none; }
+  .tool { flex: none; width: 62px; gap: 1px; font-size: .62rem; }
+  .tool .ic { width: 34px; height: 34px; }
+  .tool .ic svg.i { width: 18px; height: 18px; }
 }
 
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 75%; overflow-y: auto; z-index: 5; touch-action: pan-y;
@@ -144,7 +155,7 @@ input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
 #help .go { margin-top: 14px; width: 100%; padding: 11px; border-radius: 10px; border: 0; background: var(--accent); color: #111;
   font-weight: 700; cursor: pointer; }
 
-#toast { position: fixed; left: 50%; top: calc(64px + var(--sat)); transform: translateX(-50%); z-index: 8;
+#toast { position: fixed; left: 50%; bottom: calc(104px + var(--sab)); transform: translateX(-50%); z-index: 8;
   background: rgba(241,243,245,.95); color: #111; padding: 8px 14px; border-radius: 10px; font-size: .85rem;
   opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
 #toast.show { opacity: 1; }
@@ -178,18 +189,20 @@ input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
     </div>
   </header>
   <div id="stage">
-    <canvas id="view"></canvas>
-    <div id="msg"><div><b>Connecting to the bridge…</b>Make sure this phone is on the same WiFi as the P2 Pro bridge (or on its hotspot).</div></div>
-    <div id="badge" hidden></div>
-    <div id="flash"></div>
     <div id="tools">
-      <button class="fab" id="b-fs" title="Full screen (F)"><svg class="i"><use href="#i-fs"/></svg></button>
-      <button class="fab" id="b-freeze" title="Freeze (Space)"><svg class="i"><use href="#i-pause"/></svg></button>
-      <button class="fab" id="b-lock" title="Lock the colour range"><svg class="i"><use href="#i-unlock"/></svg></button>
-      <button class="fab" id="b-rot" title="Rotate (R)"><svg class="i"><use href="#i-rot"/></svg></button>
-      <button class="fab only-fs" id="b-snap2" title="Snapshot (S)"><svg class="i"><use href="#i-cam"/></svg></button>
+      <button class="tool" id="b-fs" title="Full screen (F)"><span class="ic"><svg class="i"><use href="#i-fs"/></svg></span><span class="tl">Full screen</span></button>
+      <button class="tool" id="b-rot" title="Rotate (R)"><span class="ic"><svg class="i"><use href="#i-rot"/></svg></span><span class="tl">Rotate</span></button>
+      <button class="tool" id="b-freeze" title="Freeze (Space)"><span class="ic"><svg class="i"><use href="#i-pause"/></svg></span><span class="tl">Freeze</span></button>
+      <button class="tool" id="b-lock" title="Lock the colour range"><span class="ic"><svg class="i"><use href="#i-unlock"/></svg></span><span class="tl">Lock colours</span></button>
+      <button class="tool only-fs" id="b-snap2" title="Snapshot (S)"><span class="ic"><svg class="i"><use href="#i-cam"/></svg></span><span class="tl">Photo</span></button>
     </div>
-    <div id="zoom-l" hidden title="Reset zoom"></div>
+    <div id="pane">
+      <canvas id="view"></canvas>
+      <div id="msg"><div><b>Connecting to the bridge…</b>Make sure this phone is on the same WiFi as the P2 Pro bridge (or on its hotspot).</div></div>
+      <div id="badge" hidden></div>
+      <div id="flash"></div>
+      <div id="zoom-l" hidden title="Reset zoom"></div>
+    </div>
   </div>
   <nav>
     <button id="b-pal"><svg class="i"><use href="#i-pal"/></svg>Palette</button>
@@ -223,7 +236,7 @@ input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
     <li><span class="k">☝︎</span><div><b>Tap</b><small>Measure that spot. Drag the spot to move it.</small></div></li>
     <li><span class="k">🤏</span><div><b>Pinch or double-tap</b><small>Zoom in. Drag to look around; double-tap again to reset.</small></div></li>
     <li><span class="k">↔︎</span><div><b>Swipe left / right</b><small>Next / previous palette.</small></div></li>
-    <li><span class="k">⛶</span><div><b>Full screen</b><small>Top-left button. Touch the screen to bring the controls back.</small></div></li>
+    <li><span class="k">⛶</span><div><b>Full screen</b><small>Button above the image. Touch the screen to bring the controls back.</small></div></li>
     <li><span class="k">🔒</span><div><b>Lock</b><small>Keeps the colours fixed so they don't shift as the scene changes.</small></div></li>
   </ul>
   <p class="tip" id="ios-tip" hidden>For true full screen on iPhone: Share → <b>Add to Home Screen</b>, then open it from the icon.</p>
@@ -350,31 +363,31 @@ const off = document.createElement("canvas"); off.width = W; off.height = H;
 const octx = off.getContext("2d"), oimg = octx.createImageData(W, H), opx = new Uint32Array(oimg.data.buffer);
 let geo = null, zoom = 1, panX = 0, panY = 0, spot = null, lock = null;   // lock: {min, max} raw
 const BAR = 46;
-function baseGeo(cw, ch, dpr, z = 1, px = 0, py = 0) {
+function baseGeo(cw, ch, dpr, z = 1, px = 0, py = 0, top = 0) {   // top: canvas rows hidden under a floating header
   const rot = ((cfg.rotation % 360) + 360) % 360, side = rot === 90 || rot === 270;
   const iw = side ? H : W, ih = side ? W : H, barW = BAR * dpr;
-  const areaW = cw - barW - 4 * dpr, areaH = ch;
+  const areaW = cw - barW - 4 * dpr, areaH = ch - top;
   const s0 = Math.min(areaW / iw, areaH / ih), s = s0 * z, dw = iw * s, dh = ih * s;
   const mx = Math.max(0, (dw - areaW) / 2), my = Math.max(0, (dh - areaH) / 2);
   px = Math.max(-mx, Math.min(mx, px)); py = Math.max(-my, Math.min(my, py));
-  const ox = (areaW - dw) / 2 + px, oy = (areaH - dh) / 2 + py;
-  const clip = { x0: Math.max(0, ox), y0: Math.max(0, oy), x1: Math.min(areaW, ox + dw), y1: Math.min(areaH, oy + dh) };
-  return { s, s0, dw, dh, ox, oy, rot, dpr, barW, areaW, areaH, clip, px, py };
+  const ox = (areaW - dw) / 2 + px, oy = top + (areaH - dh) / 2 + py;
+  const clip = { x0: Math.max(0, ox), y0: Math.max(top, oy), x1: Math.min(areaW, ox + dw), y1: Math.min(top + areaH, oy + dh) };
+  return { s, s0, dw, dh, ox, oy, rot, dpr, barW, areaW, areaH, clip, px, py, top };
 }
 function layout() {
   const r = view.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
   view.width = Math.round(r.width * dpr); view.height = Math.round(r.height * dpr);
-  geo = baseGeo(view.width, view.height, dpr, zoom, panX, panY);
+  const hd = document.querySelector("header");             // a floating header (landscape / full screen)
+  const top = getComputedStyle(hd).position === "absolute" ? Math.max(0, hd.getBoundingClientRect().bottom - r.top) * dpr : 0;
+  geo = baseGeo(view.width, view.height, dpr, zoom, panX, panY, Math.round(top));
   panX = geo.px; panY = geo.py;
-  const hd = document.querySelector("header");             // a floating header covers the top of the stage
-  geo.topInset = getComputedStyle(hd).position === "absolute" ? hd.offsetHeight * dpr : 0;
   const zl = $("zoom-l"); zl.hidden = zoom <= 1.01; zl.textContent = zoom.toFixed(1) + "×  ✕";
   redraw();
 }
 function setZoom(z, ax, ay) {         // zoom around a canvas point (ax, ay)
   z = Math.max(1, Math.min(8, z));
-  if (ax == null) { ax = geo.areaW / 2; ay = geo.areaH / 2; }
-  const cx = geo.areaW / 2, cy = geo.areaH / 2;
+  if (ax == null) { ax = geo.areaW / 2; ay = geo.top + geo.areaH / 2; }
+  const cx = geo.areaW / 2, cy = geo.top + geo.areaH / 2;
   panX = ax - cx - (ax - cx - panX) * (z / zoom);
   panY = ay - cy - (ay - cy - panY) * (z / zoom);
   zoom = z; if (z === 1) { panX = panY = 0; }
@@ -487,7 +500,7 @@ function cross(ctx, g, x, y, text, isSpot) {
 }
 function colorbar(ctx, g, tmin, tmax) {
   const d = g.dpr, bw = 12 * d, x = Math.min(g.areaW, g.ox + g.dw) + 12 * d;   // right next to the image
-  const top = Math.max(g.clip.y0, g.topInset || 0) + 20 * d, h = Math.max(20, Math.min(g.clip.y1, g.areaH) - top - 20 * d);
+  const top = g.clip.y0 + 20 * d, h = Math.max(20, Math.min(g.clip.y1, g.top + g.areaH) - top - 20 * d);
   const grd = ctx.createLinearGradient(0, top + h, 0, top);
   for (let i = 0; i <= 16; i++) {
     const c = lut[Math.round(i * (palSize - 1) / 16)];
@@ -568,6 +581,7 @@ function setRangeLabel(high) {
 // ------------------------------------------------------------------ UI helpers
 function toast(t) { const e = $("toast"); e.textContent = t; e.classList.add("show"); clearTimeout(e._h); e._h = setTimeout(() => e.classList.remove("show"), 2200); }
 function icon(btn, id) { btn.querySelector("use").setAttribute("href", "#" + id); }
+function setLabel(btn, t) { btn.querySelector(".tl").textContent = t; }
 function openSheet(id) {
   for (const s of document.querySelectorAll(".sheet")) s.classList.toggle("open", s.id === id && !s.classList.contains("open"));
   $("scrim").hidden = !document.querySelector(".sheet.open");
@@ -582,7 +596,7 @@ const fsApi = document.fullscreenEnabled || document.webkitFullscreenEnabled;
 function inFs() { return document.body.classList.contains("fs"); }
 async function setFs(on) {
   document.body.classList.toggle("fs", on);
-  icon($("b-fs"), on ? "i-fsx" : "i-fs");
+  icon($("b-fs"), on ? "i-fsx" : "i-fs"); setLabel($("b-fs"), on ? "Exit full" : "Full screen");
   try {
     if (on && fsApi && !document.fullscreenElement && !document.webkitFullscreenElement) {
       const el = document.documentElement;
@@ -605,18 +619,18 @@ function poke() {                     // touch → show the floating controls ag
 
 $("b-rot").onclick = () => { cfg.rotation = (cfg.rotation + 90) % 360; save(); zoom = 1; panX = panY = 0; layout(); };
 function setFrozen(on) {
-  frozen = on; $("b-freeze").classList.toggle("on", on); icon($("b-freeze"), on ? "i-play" : "i-pause");
+  frozen = on; $("b-freeze").classList.toggle("on", on); icon($("b-freeze"), on ? "i-play" : "i-pause"); setLabel($("b-freeze"), on ? "Go live" : "Freeze");
   toast(on ? "Frozen — tap ▶ to go live" : "Live"); showStatus();
 }
 $("b-freeze").onclick = () => setFrozen(!frozen);
 $("b-lock").onclick = () => {
   if (lock) { lock = null; toast("Colour range follows the scene"); }
   else if (frame) { lock = { min: frame.min, max: frame.max }; toast("Colour range locked at " + fmt(toC(lock.min)) + " … " + fmt(toC(lock.max))); }
-  $("b-lock").classList.toggle("on", !!lock); icon($("b-lock"), lock ? "i-lock" : "i-unlock"); redraw();
+  $("b-lock").classList.toggle("on", !!lock); icon($("b-lock"), lock ? "i-lock" : "i-unlock"); setLabel($("b-lock"), lock ? "Locked" : "Lock colours"); redraw();
 };
 $("b-range").onclick = () => {
   if (!ws || ws.readyState !== 1) return;
-  const high = !curHigh; wantHigh = high; lock = null; $("b-lock").classList.remove("on"); icon($("b-lock"), "i-unlock");
+  const high = !curHigh; wantHigh = high; lock = null; $("b-lock").classList.remove("on"); icon($("b-lock"), "i-unlock"); setLabel($("b-lock"), "Lock colours");
   ws.send(JSON.stringify({ cmd: "set_range", high }));
   $("range-l").textContent = "…"; toast(high ? "Switching to the high range…" : "Switching to the low range…");
   setTimeout(() => { if (wantHigh != null) { wantHigh = null; setRangeLabel(curHigh); toast("The camera didn't switch range"); } }, 6000);
@@ -649,7 +663,7 @@ view.addEventListener("pointermove", (ev) => {
   const [x, y] = cpos(ev); ptrs.set(ev.pointerId, { x, y });
   if (gest.kind === "pinch" && ptrs.size === 2) {
     const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    const z = Math.max(1, Math.min(8, gest.z0 * d / gest.d0)), cx = geo.areaW / 2, cy = geo.areaH / 2;
+    const z = Math.max(1, Math.min(8, gest.z0 * d / gest.d0)), cx = geo.areaW / 2, cy = geo.top + geo.areaH / 2;
     panX = mx - cx - (gest.mx - cx - gest.px) * (z / gest.z0);
     panY = my - cy - (gest.my - cy - gest.py) * (z / gest.z0);
     zoom = z; layout(); return;
@@ -763,7 +777,7 @@ async function keepAwake() {
     // full size behind the image: it is solid black like the stage, and browsers only keep the screen on
     // for videos they consider visible and big enough
     awakeVid.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none;z-index:0";
-    $("stage").prepend(awakeVid);
+    $("pane").prepend(awakeVid);
   }
   if (awakeVid.paused) awakeVid.play().catch(() => {});
 }
