@@ -677,6 +677,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self.via_hotspot:
                 self.server.dismissed.add(self.ip)
             return self._json({"ok": True})
+        if path == "/api/web":                 # on/off for the browser viewer: no PIN needed
+            enable = body.get("enable")
+            if not isinstance(enable, bool):
+                return self._json({"error": "enable must be true or false"}, 400)
+            ok, out = mgr.web.set(enable)
+            log.info("browser viewer %s by %s%s", "enabled" if enable else "disabled", self.ip,
+                     "" if ok else " FAILED: " + out)
+            if not ok:
+                return self._json({"error": "Could not switch the browser viewer: " + out[-160:]}, 500)
+            return self._json({"ok": True, "web": mgr.web.state()})
         if not self._authorized():
             return self._json({"error": "PIN required (shown on the setup page when you are on the hotspot)"}, 403)
         if path == "/api/connect":
@@ -707,15 +717,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"error": "Use 1–32 letters, digits or '-' (not at the ends)."}, 400)
             mgr.set_name(name)
             return self._json({"ok": True})
-        if path == "/api/web":
-            enable = body.get("enable")
-            if not isinstance(enable, bool):
-                return self._json({"error": "enable must be true or false"}, 400)
-            ok, out = mgr.web.set(enable)
-            log.info("browser viewer %s%s", "enabled" if enable else "disabled", "" if ok else " FAILED: " + out)
-            if not ok:
-                return self._json({"error": "Could not switch the browser viewer: " + out[-160:]}, 500)
-            return self._json({"ok": True, "web": mgr.web.state()})
         self._json({"error": "not found"}, 404)
 
 

@@ -164,6 +164,26 @@ def cpu_temp():
         return None
 
 
+_cpu = {"t": 0.0, "busy": 0, "total": 0, "pct": None}
+
+
+def cpu_usage():
+    """Whole-system CPU use in % since the previous sample (refreshed at most once a second)."""
+    now = time.monotonic()
+    if now - _cpu["t"] < 1.0:
+        return _cpu["pct"]
+    try:
+        f = [int(x) for x in Path("/proc/stat").read_text().split("\n", 1)[0].split()[1:]]
+    except (OSError, ValueError):
+        return None
+    total, idle = sum(f[:8]), f[3] + (f[4] if len(f) > 4 else 0)
+    busy = total - idle
+    if _cpu["total"] and total > _cpu["total"]:
+        _cpu["pct"] = round(100.0 * (busy - _cpu["busy"]) / (total - _cpu["total"]), 1)
+    _cpu.update(t=now, busy=busy, total=total)
+    return _cpu["pct"]
+
+
 def pisugar_battery():
     """Battery % from the PiSugar power manager, if installed."""
     try:
@@ -324,7 +344,7 @@ class Bridge:
         return {"camera_ok": self.cam_ok, "camera": self.cam.model, "cam_fps": round(fps, 1),
                 "viewer": self.client_addr[0] if (self.streaming and self.client_addr) else None,
                 "sent": self.sent_frames, "skipped": self.skipped, "rssi_dbm": wifi_rssi(self.iface),
-                "cpu_temp": cpu_temp(), "battery_pct": pisugar_battery(), "bridge": __version__,
+                "cpu_temp": cpu_temp(), "cpu_pct": cpu_usage(), "battery_pct": pisugar_battery(), "bridge": __version__,
                 "web_viewers": self.web_viewers if self.tap_conns else 0}
 
     def _status_file_loop(self, path):

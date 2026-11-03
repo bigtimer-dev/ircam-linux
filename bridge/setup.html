@@ -92,6 +92,7 @@ details[open] summary { margin-bottom: 8px; }
     <div class="row"><span>Camera</span><span id="s-cam">…</span></div>
     <div class="row"><span>Viewer</span><span id="s-viewer">…</span></div>
     <div class="row" id="r-bat" hidden><span>Battery</span><span id="s-bat"></span></div>
+    <div class="row" id="r-cpu" hidden><span>CPU usage</span><span id="s-cpu"></span></div>
     <div class="row" id="r-temp" hidden><span>CPU temperature</span><span id="s-temp"></span></div>
     <p class="hint" id="s-howto"></p>
   </section>
@@ -213,6 +214,10 @@ function renderStatus() {
                b.camera_ok ? " " + b.cam_fps.toFixed(1) + " fps" : " plug in the P2 Pro");
     viewer.textContent = b.viewer ? "streaming to " + b.viewer : "none";
     $("r-bat").hidden = b.battery_pct == null; $("s-bat").textContent = b.battery_pct == null ? "" : Math.round(b.battery_pct) + " %";
+    $("r-cpu").hidden = b.cpu_pct == null;
+    $("s-cpu").replaceChildren();
+    if (b.cpu_pct != null) $("s-cpu").append(b.cpu_pct > 85 ? pill(Math.round(b.cpu_pct) + " %", "err")
+      : b.cpu_pct > 60 ? pill(Math.round(b.cpu_pct) + " %", "warn") : Math.round(b.cpu_pct) + " %");
     $("r-temp").hidden = b.cpu_temp == null; $("s-temp").textContent = b.cpu_temp == null ? "" : b.cpu_temp.toFixed(0) + " °C";
   }
   const addr = st.mode === "hotspot" ? "10.42.0.1" : (st.hostname || "p2pro") + ".local" + (st.ip ? " or " + st.ip : "");

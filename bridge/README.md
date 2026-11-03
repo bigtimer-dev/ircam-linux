@@ -74,7 +74,7 @@ reader.
 iOS doesn't allow apps to talk to the P2 Pro over USB, so iPhones watch through the bridge in Safari.
 
 1. Open the setup page (`http://p2pro.local`, or `http://10.42.0.1` on the hotspot).
-2. **Browser viewer → Turn on** (from the home network it asks for the PIN).
+2. **Browser viewer → Turn on** (no PIN needed).
 3. Open the link it shows (`http://p2pro.local:8080`) in Safari. Share → **Add to Home Screen**
    gives it an app icon and full screen.
 

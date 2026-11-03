@@ -167,6 +167,7 @@ class BrowserViewer(unittest.TestCase):
                 _, status = self.frames(ws, 1)
             self.assertTrue(status["bridge"] and status["camera_ok"] and status["can_range"])
             self.assertEqual(status["web_viewers"], 1)
+            self.assertTrue(0 <= status["cpu_pct"] <= 100)
             for high in (True, False):
                 ws.send_text(json.dumps({"cmd": "set_range", "high": high}))
                 deadline = time.monotonic() + 5
@@ -216,16 +217,17 @@ class SetupPageToggle(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.load(e)
 
-    def test_off_by_default_and_toggle_needs_the_pin(self):
+    def test_off_by_default_and_toggle_without_pin(self):
         code, st = self.call("/api/status")
         self.assertEqual(code, 200)
         self.assertEqual(st["web"], {"enabled": False, "active": False, "port": 8080})
-        self.assertEqual(self.call("/api/web", {"enable": True})[0], 403)
+        self.assertEqual(self.call("/api/name", {"name": "x"})[0], 403)    # other settings keep the PIN
+        self.assertEqual(self.call("/api/web", {"enable": "yes"})[0], 400)
         self.assertFalse(self.svc.enabled)
-        code, j = self.call("/api/web", {"enable": True}, self.pin)
+        code, j = self.call("/api/web", {"enable": True})
         self.assertEqual((code, j["web"]["enabled"], j["web"]["active"]), (200, True, True))
         self.assertTrue(self.call("/api/status")[1]["web"]["active"])
-        code, j = self.call("/api/web", {"enable": False}, self.pin)
+        code, j = self.call("/api/web", {"enable": False})
         self.assertEqual((code, j["web"]["enabled"], j["web"]["active"]), (200, False, False))
 
 
