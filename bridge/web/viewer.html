@@ -13,8 +13,8 @@
 <title>P2 Pro Thermal</title>
 <style>
 :root {
-  --bg: #000; --bar: rgba(22, 24, 28, .92); --fg: #f1f3f5; --muted: #9aa1ab; --line: #2e333b;
-  --accent: #ff7a33; --hot: #ff5c5c; --cold: #5cb8ff; --ok: #51cf66; --warn: #ffa94d;
+  --bg: #000; --bar: rgba(20, 22, 26, .94); --glass: rgba(20, 22, 26, .62); --fg: #f1f3f5; --muted: #9aa1ab;
+  --line: #2e333b; --accent: #ff7a33; --hot: #ff5c5c; --cold: #5cb8ff; --ok: #51cf66; --warn: #ffa94d; --rec: #ff3b30;
   --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom);
   --sal: env(safe-area-inset-left); --sar: env(safe-area-inset-right);
 }
@@ -22,41 +22,100 @@
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden;
   font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+  -webkit-user-select: none; user-select: none; touch-action: none; overscroll-behavior: none; }
+button { font: inherit; color: inherit; }
+svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
 #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
-header { display: flex; align-items: center; gap: 10px; padding: calc(8px + var(--sat)) calc(12px + var(--sar)) 8px calc(12px + var(--sal));
-  background: var(--bar); border-bottom: 1px solid var(--line); flex: none; }
+header { display: flex; align-items: center; gap: 10px; flex: none; z-index: 2;
+  padding: calc(8px + var(--sat)) calc(12px + var(--sar)) 8px calc(12px + var(--sal));
+  background: var(--bar); border-bottom: 1px solid var(--line); }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.err { background: var(--hot); }
 #status { flex: 1; min-width: 0; font-size: .82rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.readouts { display: flex; gap: 14px; font-variant-numeric: tabular-nums; font-weight: 650; font-size: .95rem; }
-.readouts span b { font-weight: 500; color: var(--muted); font-size: .72rem; margin-right: 3px; }
+#rec-time { color: var(--rec); font-weight: 700; font-variant-numeric: tabular-nums; font-size: .85rem; }
+#rec-time::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--rec);
+  margin-right: 5px; vertical-align: 1px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.readouts { display: flex; gap: 12px; font-variant-numeric: tabular-nums; font-weight: 650; font-size: .95rem; }
+.readouts span b { font-weight: 500; color: var(--muted); font-size: .7rem; margin-right: 3px; }
 #r-max { color: var(--hot); } #r-min { color: var(--cold); }
-#stage { position: relative; flex: 1; min-height: 0; display: flex; }
-#view { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+#r-spot { cursor: pointer; }
+
+#stage { position: relative; flex: 1; min-height: 0; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .3s; }
+#view.stale { opacity: .45; }
 #msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
   padding: 24px; color: var(--muted); pointer-events: none; }
 #msg div { max-width: 320px; }
 #msg b { display: block; color: var(--fg); font-size: 1.05rem; margin-bottom: 6px; }
-nav { display: flex; justify-content: space-around; gap: 4px; flex: none; background: var(--bar); border-top: 1px solid var(--line);
+#badge { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2; pointer-events: none;
+  background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  padding: 6px 12px; border-radius: 99px; font-size: .82rem; white-space: nowrap; }
+.spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: transparent;
+  border-radius: 50%; animation: s 1s linear infinite; vertical-align: -2px; margin-right: 6px; }
+@keyframes s { to { transform: rotate(360deg); } }
+#flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 3; }
+#flash.go { animation: flash .35s ease-out; }
+@keyframes flash { from { opacity: .75; } to { opacity: 0; } }
+
+/* floating tools over the image */
+#tools { position: absolute; left: calc(10px + var(--sal)); top: 10px; z-index: 2; display: flex; flex-direction: column; gap: 8px; }
+.fab { width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(255,255,255,.12); display: grid; place-items: center;
+  background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: pointer; padding: 0; }
+.fab svg.i { width: 21px; height: 21px; }
+.fab.on { color: #111; background: var(--accent); border-color: var(--accent); }
+.fab.only-fs { display: none; }
+#zoom-l { position: absolute; right: 56px; bottom: 12px; z-index: 2; font-size: .8rem; background: var(--glass);
+  padding: 4px 10px; border-radius: 99px; cursor: pointer; }
+
+nav { display: flex; justify-content: space-around; align-items: center; gap: 4px; flex: none; z-index: 2;
+  background: var(--bar); border-top: 1px solid var(--line);
   padding: 6px calc(6px + var(--sar)) calc(6px + var(--sab)) calc(6px + var(--sal)); }
-nav button { flex: 1; max-width: 92px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px;
-  background: none; border: 0; border-radius: 10px; color: var(--fg); font: inherit; font-size: .7rem; cursor: pointer; }
-nav button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+nav button { flex: 1; max-width: 90px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px;
+  background: none; border: 0; border-radius: 10px; font-size: .7rem; cursor: pointer; }
 nav button:active { background: rgba(255,255,255,.08); }
 nav button.on { color: var(--accent); }
 nav button:disabled { opacity: .35; }
-.sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 70%; overflow-y: auto; z-index: 5;
+nav #b-snap { flex: none; width: 62px; height: 62px; max-width: none; border-radius: 50%; padding: 0; justify-content: center;
+  border: 3px solid var(--fg); background: none; }
+nav #b-snap span { width: 48px; height: 48px; border-radius: 50%; background: var(--fg); transition: transform .1s; }
+nav #b-snap:active span { transform: scale(.88); }
+#b-rec.on { color: var(--rec); }
+
+/* immersive / fullscreen: the image takes the whole screen, bars float */
+body.fs header { position: absolute; left: 0; right: 0; top: 0; background: var(--glass); border: 0;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+body.fs nav { display: none; }
+body.fs #tools { top: calc(58px + var(--sat)); }
+body.fs .fab.only-fs { display: grid; }
+body.fs.idle header, body.fs.idle #tools, body.fs.idle #zoom-l { opacity: 0; pointer-events: none; }
+body.fs header, body.fs #tools, body.fs #zoom-l { transition: opacity .3s; }
+
+/* phone in landscape: controls on the right, header floats */
+@media (orientation: landscape) and (max-height: 520px) {
+  #app { flex-direction: row; flex-wrap: wrap; }
+  header { position: absolute; left: 0; right: calc(84px + var(--sar)); top: 0; background: var(--glass); border: 0;
+    padding-top: 6px; padding-bottom: 6px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  #stage { height: 100%; }
+  nav { flex-direction: column; height: 100%; width: calc(84px + var(--sar)); border-top: 0; border-left: 1px solid var(--line);
+    padding: calc(6px + var(--sat)) calc(6px + var(--sar)) calc(6px + var(--sab)) 6px; }
+  nav button { flex: 0 1 auto; }
+  #tools { top: 50px; }
+  body.fs #tools { top: 50px; }
+}
+
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 75%; overflow-y: auto; z-index: 5; touch-action: pan-y;
   background: #1b1d22; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0;
   padding: 10px calc(16px + var(--sar)) calc(18px + var(--sab)) calc(16px + var(--sal));
-  transform: translateY(105%); transition: transform .22s ease; }
+  transform: translateY(105%); transition: transform .22s ease; max-width: 640px; margin: 0 auto; }
 .sheet.open { transform: none; }
 .sheet h3 { margin: 6px 0 10px; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .grab { width: 38px; height: 4px; border-radius: 2px; background: var(--line); margin: 0 auto 6px; }
-#scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 4; }
+#scrim { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 4; }
 .pals { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
 .pal { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 10px; border: 1px solid var(--line);
-  background: none; color: var(--fg); font: inherit; font-size: .75rem; cursor: pointer; text-align: left; }
+  background: none; font-size: .75rem; cursor: pointer; text-align: left; }
 .pal canvas { width: 100%; height: 16px; border-radius: 4px; display: block; }
 .pal.on { border-color: var(--accent); }
 .set { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
@@ -64,44 +123,85 @@ nav button:disabled { opacity: .35; }
 .set label { flex: 1; }
 .set small { display: block; color: var(--muted); }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
-.seg button { background: none; border: 0; color: var(--fg); font: inherit; padding: 6px 12px; cursor: pointer; }
+.seg button { background: none; border: 0; padding: 6px 12px; cursor: pointer; }
 .seg button.on { background: var(--accent); color: #111; font-weight: 650; }
+.btn { background: none; border: 1px solid var(--line); border-radius: 9px; padding: 6px 12px; cursor: pointer; }
 input[type=range] { width: 150px; accent-color: var(--accent); }
 input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
-#toast { position: fixed; left: 50%; top: calc(64px + var(--sat)); transform: translateX(-50%); z-index: 6;
-  background: rgba(241,243,245,.95); color: #111; padding: 8px 14px; border-radius: 10px; font-size: .85rem;
-  opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
-#toast.show { opacity: 1; }
 .about { color: var(--muted); font-size: .8rem; margin-top: 14px; }
+
+#help { position: fixed; inset: 0; z-index: 7; display: grid; place-items: center; background: rgba(0,0,0,.55); padding: 20px; }
+#help .card { background: #1b1d22; border: 1px solid var(--line); border-radius: 16px; padding: 18px 18px 14px; max-width: 360px; width: 100%; }
+#help h2 { margin: 0 0 12px; font-size: 1.1rem; }
+#help ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+#help li { display: flex; gap: 12px; align-items: flex-start; }
+#help li b { display: block; }
+#help li span.k { flex: none; width: 34px; height: 34px; border-radius: 10px; background: rgba(255,255,255,.07);
+  display: grid; place-items: center; font-size: 1.05rem; }
+#help li small { color: var(--muted); }
+#help .tip { margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-size: .85rem; }
+#help .go { margin-top: 14px; width: 100%; padding: 11px; border-radius: 10px; border: 0; background: var(--accent); color: #111;
+  font-weight: 700; cursor: pointer; }
+
+#toast { position: fixed; left: 50%; top: calc(64px + var(--sat)); transform: translateX(-50%); z-index: 8;
+  background: rgba(241,243,245,.95); color: #111; padding: 8px 14px; border-radius: 10px; font-size: .85rem;
+  opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
+#toast.show { opacity: 1; }
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-pal" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.9-.7-1.3-.7-2.2 0-.9.7-1.6 1.6-1.6H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></symbol>
+  <symbol id="i-therm" viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0z"/><path d="M12 11v5"/></symbol>
+  <symbol id="i-rec" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7.5v9l-5-3"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-fs" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  <symbol id="i-fsx" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+  <symbol id="i-rot" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l12-7z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+</svg>
+
 <div id="app">
   <header>
     <span class="dot" id="dot"></span>
     <span id="status">Connecting…</span>
+    <span id="rec-time" hidden>0:00</span>
     <div class="readouts">
-      <span id="r-max"><b>MAX</b>–</span>
-      <span id="r-min"><b>MIN</b>–</span>
-      <span id="r-spot"><b id="r-spot-l">CTR</b><i id="r-spot-v" style="font-style:normal">–</i></span>
+      <span id="r-max"><b>MAX</b><i style="font-style:normal">–</i></span>
+      <span id="r-min"><b>MIN</b><i style="font-style:normal">–</i></span>
+      <span id="r-spot" title="Tap to clear the spot"><b id="r-spot-l">CTR</b><i id="r-spot-v" style="font-style:normal">–</i></span>
     </div>
   </header>
   <div id="stage">
     <canvas id="view"></canvas>
     <div id="msg"><div><b>Connecting to the bridge…</b>Make sure this phone is on the same WiFi as the P2 Pro bridge (or on its hotspot).</div></div>
+    <div id="badge" hidden></div>
+    <div id="flash"></div>
+    <div id="tools">
+      <button class="fab" id="b-fs" title="Full screen (F)"><svg class="i"><use href="#i-fs"/></svg></button>
+      <button class="fab" id="b-freeze" title="Freeze (Space)"><svg class="i"><use href="#i-pause"/></svg></button>
+      <button class="fab" id="b-lock" title="Lock the colour range"><svg class="i"><use href="#i-unlock"/></svg></button>
+      <button class="fab" id="b-rot" title="Rotate (R)"><svg class="i"><use href="#i-rot"/></svg></button>
+      <button class="fab only-fs" id="b-snap2" title="Snapshot (S)"><svg class="i"><use href="#i-cam"/></svg></button>
+    </div>
+    <div id="zoom-l" hidden title="Reset zoom"></div>
   </div>
   <nav>
-    <button id="b-pal"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.9-.7-1.3-.7-2.2 0-.9.7-1.6 1.6-1.6H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></svg>Palette</button>
-    <button id="b-range"><svg viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0z"/><path d="M12 11v5"/></svg><span id="range-l">Low</span></button>
-    <button id="b-freeze"><svg viewBox="0 0 24 24"><rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/></svg><span id="freeze-l">Freeze</span></button>
-    <button id="b-snap"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Snapshot</button>
-    <button id="b-rot"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>Rotate</button>
-    <button id="b-set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</button>
+    <button id="b-pal"><svg class="i"><use href="#i-pal"/></svg>Palette</button>
+    <button id="b-range"><svg class="i"><use href="#i-therm"/></svg><span id="range-l">Low</span></button>
+    <button id="b-snap" title="Snapshot (S)" aria-label="Snapshot"><span></span></button>
+    <button id="b-rec"><svg class="i"><use href="#i-rec"/></svg><span id="rec-l">Record</span></button>
+    <button id="b-set"><svg class="i"><use href="#i-gear"/></svg>Settings</button>
   </nav>
 </div>
 
 <div id="scrim" hidden></div>
-<section class="sheet" id="s-pal"><div class="grab"></div><h3>Palette</h3><div class="pals" id="pals"></div>
+<section class="sheet" id="s-pal"><div class="grab"></div><h3>Palette <small style="text-transform:none;letter-spacing:0">— or swipe left/right on the image</small></h3><div class="pals" id="pals"></div>
   <h3 style="margin-top:16px">All palettes</h3><div class="pals" id="pals-all"></div></section>
 <section class="sheet" id="s-set"><div class="grab"></div><h3>Settings</h3>
   <div class="set"><label>Units</label><div class="seg" id="seg-unit"><button data-v="C">°C</button><button data-v="F">°F</button></div></div>
@@ -110,19 +210,37 @@ input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
   <div class="set"><label>Invert palette</label><input type="checkbox" id="invert"></div>
   <div class="set"><label>Mirror image</label><input type="checkbox" id="mirror"></div>
   <div class="set"><label>Max / min markers</label><input type="checkbox" id="markers"></div>
-  <div class="set"><label>Clear measurement spot <small>Tap the image to place a spot.</small></label><button class="seg" id="b-clear" style="padding:6px 12px;color:var(--fg)">Clear</button></div>
+  <div class="set"><label>Keep the screen on <small>While the viewer is open.</small></label><input type="checkbox" id="awake"></div>
+  <div class="set"><label>Hide controls in full screen <small>They come back when you touch the screen.</small></label><input type="checkbox" id="autohide"></div>
+  <div class="set"><label>Measurement spot <small>Tap the image to place it, drag to move it.</small></label><button class="btn" id="b-clear">Clear</button></div>
+  <div class="set"><label>Gestures &amp; tips</label><button class="btn" id="b-help">Show</button></div>
   <p class="about" id="about"></p>
 </section>
+
+<div id="help" hidden><div class="card">
+  <h2>Quick tips</h2>
+  <ul>
+    <li><span class="k">☝︎</span><div><b>Tap</b><small>Measure that spot. Drag the spot to move it.</small></div></li>
+    <li><span class="k">🤏</span><div><b>Pinch or double-tap</b><small>Zoom in. Drag to look around; double-tap again to reset.</small></div></li>
+    <li><span class="k">↔︎</span><div><b>Swipe left / right</b><small>Next / previous palette.</small></div></li>
+    <li><span class="k">⛶</span><div><b>Full screen</b><small>Top-left button. Touch the screen to bring the controls back.</small></div></li>
+    <li><span class="k">🔒</span><div><b>Lock</b><small>Keeps the colours fixed so they don't shift as the scene changes.</small></div></li>
+  </ul>
+  <p class="tip" id="ios-tip" hidden>For true full screen on iPhone: Share → <b>Add to Home Screen</b>, then open it from the icon.</p>
+  <button class="go" id="b-help-ok">Got it</button>
+</div></div>
 <div id="toast"></div>
 
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const W = 256, H = 192;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const standalone = navigator.standalone || matchMedia("(display-mode: standalone)").matches;
 
 // ------------------------------------------------------------------ settings
 const DEF = { palette: "Iron", unit: "C", emissivity: 0.98, smooth: true, invert: false, mirror: false,
-              markers: true, rotation: 0 };
+              markers: true, rotation: 0, awake: true, autohide: true, helped: false };
 let cfg = { ...DEF };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem("ircam-web") || "{}")); } catch (_) {}
 function save() { try { localStorage.setItem("ircam-web", JSON.stringify(cfg)); } catch (_) {} }
@@ -143,8 +261,7 @@ function updateCorrection() {
 const toC = (raw) => (raw * 0.015625 - 273.15) * corrFactor + corrOffset;
 function fmt(c) {
   if (c == null || !isFinite(c)) return "–";
-  const v = cfg.unit === "F" ? c * 1.8 + 32 : c;
-  return v.toFixed(1) + "°";
+  return (cfg.unit === "F" ? c * 1.8 + 32 : c).toFixed(1) + "°";
 }
 
 // ------------------------------------------------------------------ palettes
@@ -160,12 +277,17 @@ function palRGB(name, i) {
   return [palData[o], palData[o + 1], palData[o + 2]];
 }
 function buildLut() {
+  if (!palData) return;
   lut = new Uint32Array(palSize);
   for (let i = 0; i < palSize; i++) {
     const [r, g, b] = palRGB(cfg.palette, cfg.invert ? palSize - 1 - i : i);
     lut[i] = (255 << 24) | (b << 16) | (g << 8) | r;          // little-endian RGBA
   }
-  if (frame) render();
+  redraw();
+}
+function setPalette(n) {
+  cfg.palette = n; save(); buildLut();
+  document.querySelectorAll(".pal").forEach(p => p.classList.toggle("on", p.dataset.name === n));
 }
 function swatch(name) {
   const c = document.createElement("canvas"); c.width = 64; c.height = 1;
@@ -178,8 +300,7 @@ function buildPaletteSheet() {
     box.replaceChildren();
     for (const n of list) {
       const b = document.createElement("button"); b.className = "pal" + (n === cfg.palette ? " on" : ""); b.dataset.name = n;
-      b.append(swatch(n), n);
-      b.onclick = () => { cfg.palette = n; save(); buildLut(); document.querySelectorAll(".pal").forEach(p => p.classList.toggle("on", p.dataset.name === n)); };
+      b.append(swatch(n), n); b.onclick = () => setPalette(n);
       box.append(b);
     }
   }
@@ -187,7 +308,7 @@ function buildPaletteSheet() {
 
 // ------------------------------------------------------------------ decoding
 let frame = null;            // { raw: Uint16Array(W*H), high, fid, min, max, imin, imax }
-let busy = false, pending = null, frozen = false, frames = 0, fpsT = performance.now(), fps = 0;
+let busy = false, pending = null, frozen = false, frames = 0, fpsT = performance.now(), fps = 0, lastFrameT = 0;
 async function inflate(bytes) {
   const s = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
   return new Uint8Array(await new Response(s).arrayBuffer());
@@ -214,8 +335,8 @@ async function onFrame(buf) {
           if (acc < mn) { mn = acc; imn = i; }
         }
       }
-      frames++;
-      if (!frozen) { frame = { raw, high: !!(flags & 1), fid, min: mn, max: mx, imin: imn, imax: imx }; render(); }
+      frames++; lastFrameT = performance.now();
+      if (!frozen) { frame = { raw, high: !!(flags & 1), fid, min: mn, max: mx, imin: imn, imax: imx }; redraw(); }
       setRangeLabel(!!(flags & 1));
       buf = pending; pending = null;
     }
@@ -223,37 +344,56 @@ async function onFrame(buf) {
   busy = false;
 }
 
-// ------------------------------------------------------------------ drawing
+// ------------------------------------------------------------------ view geometry (fit, zoom, pan)
 const view = $("view"), vctx = view.getContext("2d");
 const off = document.createElement("canvas"); off.width = W; off.height = H;
 const octx = off.getContext("2d"), oimg = octx.createImageData(W, H), opx = new Uint32Array(oimg.data.buffer);
-let geo = null;              // display transform
-let spot = null;             // {x, y} image pixel
+let geo = null, zoom = 1, panX = 0, panY = 0, spot = null, lock = null;   // lock: {min, max} raw
+const BAR = 46;
+function baseGeo(cw, ch, dpr, z = 1, px = 0, py = 0) {
+  const rot = ((cfg.rotation % 360) + 360) % 360, side = rot === 90 || rot === 270;
+  const iw = side ? H : W, ih = side ? W : H, barW = BAR * dpr;
+  const areaW = cw - barW - 4 * dpr, areaH = ch;
+  const s0 = Math.min(areaW / iw, areaH / ih), s = s0 * z, dw = iw * s, dh = ih * s;
+  const mx = Math.max(0, (dw - areaW) / 2), my = Math.max(0, (dh - areaH) / 2);
+  px = Math.max(-mx, Math.min(mx, px)); py = Math.max(-my, Math.min(my, py));
+  const ox = (areaW - dw) / 2 + px, oy = (areaH - dh) / 2 + py;
+  const clip = { x0: Math.max(0, ox), y0: Math.max(0, oy), x1: Math.min(areaW, ox + dw), y1: Math.min(areaH, oy + dh) };
+  return { s, s0, dw, dh, ox, oy, rot, dpr, barW, areaW, areaH, clip, px, py };
+}
 function layout() {
   const r = view.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
   view.width = Math.round(r.width * dpr); view.height = Math.round(r.height * dpr);
-  const rot = cfg.rotation % 360, side = rot === 90 || rot === 270;
-  const iw = side ? H : W, ih = side ? W : H, barW = 46 * dpr;
-  const s = Math.min((view.width - barW - 8 * dpr) / iw, view.height / ih);
-  const dw = iw * s, dh = ih * s, ox = (view.width - barW - dw) / 2, oy = (view.height - dh) / 2;
-  geo = { s, dw, dh, ox, oy, rot, dpr, barW };
-  if (frame) render();
+  geo = baseGeo(view.width, view.height, dpr, zoom, panX, panY);
+  panX = geo.px; panY = geo.py;
+  const hd = document.querySelector("header");             // a floating header covers the top of the stage
+  geo.topInset = getComputedStyle(hd).position === "absolute" ? hd.offsetHeight * dpr : 0;
+  const zl = $("zoom-l"); zl.hidden = zoom <= 1.01; zl.textContent = zoom.toFixed(1) + "×  ✕";
+  redraw();
 }
-function toScreen(x, y) {           // image pixel centre -> canvas pixel
-  let u = cfg.mirror ? W - 1 - x : x, v = y, a, b;
-  u += 0.5; v += 0.5;
-  switch (geo.rot) {
+function setZoom(z, ax, ay) {         // zoom around a canvas point (ax, ay)
+  z = Math.max(1, Math.min(8, z));
+  if (ax == null) { ax = geo.areaW / 2; ay = geo.areaH / 2; }
+  const cx = geo.areaW / 2, cy = geo.areaH / 2;
+  panX = ax - cx - (ax - cx - panX) * (z / zoom);
+  panY = ay - cy - (ay - cy - panY) * (z / zoom);
+  zoom = z; if (z === 1) { panX = panY = 0; }
+  layout();
+}
+function toScreen(g, x, y) {          // image pixel centre -> canvas pixel
+  let u = (cfg.mirror ? W - 1 - x : x) + 0.5, v = y + 0.5, a, b;
+  switch (g.rot) {
     case 90: a = H - v; b = u; break;
     case 180: a = W - u; b = H - v; break;
     case 270: a = v; b = W - u; break;
     default: a = u; b = v;
   }
-  return [geo.ox + a * geo.s, geo.oy + b * geo.s];
+  return [g.ox + a * g.s, g.oy + b * g.s];
 }
 function toImage(px, py) {
-  const a = (px - geo.ox) / geo.s, b = (py - geo.oy) / geo.s;
+  const g = geo, a = (px - g.ox) / g.s, b = (py - g.oy) / g.s;
   let u, v;
-  switch (geo.rot) {
+  switch (g.rot) {
     case 90: u = b; v = H - a; break;
     case 180: u = W - a; v = H - b; break;
     case 270: u = W - b; v = a; break;
@@ -263,14 +403,30 @@ function toImage(px, py) {
   const x = Math.floor(u), y = Math.floor(v);
   return x >= 0 && x < W && y >= 0 && y < H ? { x, y } : null;
 }
-function render(ctx = vctx, g = geo) {
-  if (!frame || !g) return;
-  const { raw, min, max } = frame, span = Math.max(1, max - min), k = (palSize - 1) / span;
-  for (let i = 0; i < raw.length; i++) opx[i] = lut[((raw[i] - min) * k) | 0];
+
+// ------------------------------------------------------------------ drawing
+let rec = null;                       // { mr, canvas, ctx, g, t0, chunks, type }
+function redraw() {
+  if (!frame || !geo) return;
+  paintImage();
+  render(vctx, geo);
+  if (rec) render(rec.ctx, rec.g);
+}
+function paintImage() {
+  const { raw } = frame, lo = lock ? lock.min : frame.min, hi = lock ? lock.max : frame.max;
+  const k = (palSize - 1) / Math.max(1, hi - lo), top = palSize - 1;
+  for (let i = 0; i < raw.length; i++) {
+    let j = ((raw[i] - lo) * k) | 0;
+    opx[i] = lut[j < 0 ? 0 : j > top ? top : j];
+  }
   octx.putImageData(oimg, 0, 0);
-  const c = ctx.canvas;
+}
+function render(ctx, g) {
+  const c = ctx.canvas, { raw } = frame;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#000"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(g.clip.x0, g.clip.y0, g.clip.x1 - g.clip.x0, g.clip.y1 - g.clip.y0); ctx.clip();
   ctx.imageSmoothingEnabled = cfg.smooth; ctx.imageSmoothingQuality = "high";
   ctx.save();
   ctx.translate(g.ox + g.dw / 2, g.oy + g.dh / 2);
@@ -278,7 +434,6 @@ function render(ctx = vctx, g = geo) {
   if (cfg.mirror) ctx.scale(-1, 1);
   ctx.drawImage(off, -W * g.s / 2, -H * g.s / 2, W * g.s, H * g.s);
   ctx.restore();
-  // markers
   const T = (i) => toC(raw[i]);
   if (cfg.markers) {
     marker(ctx, g, frame.imax % W, (frame.imax / W) | 0, "#ff5c5c", "▲ " + fmt(T(frame.imax)));
@@ -286,20 +441,23 @@ function render(ctx = vctx, g = geo) {
   }
   const sp = spot || { x: W / 2, y: H / 2 };
   cross(ctx, g, sp.x, sp.y, fmt(T(sp.y * W + sp.x)), !!spot);
-  colorbar(ctx, g, toC(min), toC(max));
-  $("r-max").lastChild.textContent = fmt(toC(max));
-  $("r-min").lastChild.textContent = fmt(toC(min));
-  $("r-spot-l").textContent = spot ? "SPOT" : "CTR";
-  $("r-spot-v").textContent = fmt(T(sp.y * W + sp.x));
+  ctx.restore();
+  colorbar(ctx, g, toC(lock ? lock.min : frame.min), toC(lock ? lock.max : frame.max));
+  if (ctx === vctx) {
+    $("r-max").lastChild.textContent = fmt(toC(frame.max));
+    $("r-min").lastChild.textContent = fmt(toC(frame.min));
+    $("r-spot-l").textContent = spot ? "SPOT" : "CTR";
+    $("r-spot-v").textContent = fmt(T(sp.y * W + sp.x));
+  }
 }
 function label(ctx, g, x, y, text, color) {
   const d = g.dpr; ctx.font = `600 ${13 * d}px system-ui, -apple-system, sans-serif`;
-  const w = ctx.measureText(text).width + 10 * d, h = 20 * d;
+  const w = ctx.measureText(text).width + 10 * d, h = 20 * d, C = g.clip;
   let lx = x + 9 * d, ly = y - h - 6 * d;
-  const maxX = g.ox + g.dw, maxY = g.oy + g.dh;
-  if (lx + w > maxX) lx = x - w - 9 * d;
-  if (ly < g.oy) ly = y + 8 * d;
-  if (ly + h > maxY) ly = maxY - h;
+  if (lx + w > C.x1) lx = x - w - 9 * d;
+  lx = Math.max(C.x0 + 2 * d, Math.min(lx, C.x1 - w - 2 * d));
+  if (ly < C.y0) ly = y + 8 * d;
+  if (ly + h > C.y1) ly = C.y1 - h;
   ctx.fillStyle = "rgba(0,0,0,.6)"; roundRect(ctx, lx, ly, w, h, 5 * d); ctx.fill();
   ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.fillText(text, lx + 5 * d, ly + h / 2 + 0.5 * d);
 }
@@ -307,14 +465,17 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
+const visible = (g, sx, sy) => sx >= g.clip.x0 && sx <= g.clip.x1 && sy >= g.clip.y0 && sy <= g.clip.y1;
 function marker(ctx, g, x, y, color, text) {
-  const [sx, sy] = toScreen(x, y), d = g.dpr;
+  const [sx, sy] = toScreen(g, x, y), d = g.dpr;
+  if (!visible(g, sx, sy)) return;                         // zoomed away from it
   ctx.lineWidth = 2 * d; ctx.strokeStyle = "#000"; ctx.fillStyle = color;
   ctx.beginPath(); ctx.arc(sx, sy, 5 * d, 0, 7); ctx.fill(); ctx.stroke();
   label(ctx, g, sx, sy, text, color);
 }
 function cross(ctx, g, x, y, text, isSpot) {
-  const [sx, sy] = toScreen(x, y), d = g.dpr, r = 11 * d;
+  const [sx, sy] = toScreen(g, x, y), d = g.dpr, r = 11 * d;
+  if (!visible(g, sx, sy)) return;
   for (const [w, col] of [[3.5 * d, "rgba(0,0,0,.7)"], [1.6 * d, "#fff"]]) {
     ctx.lineWidth = w; ctx.strokeStyle = col; ctx.beginPath();
     ctx.moveTo(sx - r, sy); ctx.lineTo(sx - 3 * d, sy); ctx.moveTo(sx + 3 * d, sy); ctx.lineTo(sx + r, sy);
@@ -325,25 +486,27 @@ function cross(ctx, g, x, y, text, isSpot) {
   label(ctx, g, sx, sy, text, "#fff");
 }
 function colorbar(ctx, g, tmin, tmax) {
-  const d = g.dpr, bw = 12 * d, x = ctx.canvas.width - g.barW + 6 * d, top = g.oy + 18 * d, h = Math.max(20, g.dh - 36 * d);
+  const d = g.dpr, bw = 12 * d, x = Math.min(g.areaW, g.ox + g.dw) + 12 * d;   // right next to the image
+  const top = Math.max(g.clip.y0, g.topInset || 0) + 20 * d, h = Math.max(20, Math.min(g.clip.y1, g.areaH) - top - 20 * d);
   const grd = ctx.createLinearGradient(0, top + h, 0, top);
   for (let i = 0; i <= 16; i++) {
-    const j = Math.round(i * (palSize - 1) / 16), c = lut[j];
+    const c = lut[Math.round(i * (palSize - 1) / 16)];
     grd.addColorStop(i / 16, `rgb(${c & 255},${(c >> 8) & 255},${(c >> 16) & 255})`);
   }
   ctx.fillStyle = grd; ctx.fillRect(x, top, bw, h);
-  ctx.font = `600 ${11 * d}px system-ui, -apple-system, sans-serif`; ctx.fillStyle = "#ddd"; ctx.textAlign = "center";
+  if (lock) { ctx.strokeStyle = "#ff7a33"; ctx.lineWidth = 2 * d; ctx.strokeRect(x - d, top - d, bw + 2 * d, h + 2 * d); }
+  ctx.font = `600 ${11 * d}px system-ui, -apple-system, sans-serif`; ctx.fillStyle = lock ? "#ff7a33" : "#ddd"; ctx.textAlign = "center";
   ctx.textBaseline = "bottom"; ctx.fillText(fmt(tmax), x + bw / 2, top - 3 * d);
   ctx.textBaseline = "top"; ctx.fillText(fmt(tmin), x + bw / 2, top + h + 3 * d);
   ctx.textAlign = "start";
 }
 
 // ------------------------------------------------------------------ connection
-let ws = null, st = {}, lastMsg = 0, wantHigh = null;
+let ws = null, st = {}, lastMsg = 0, wantHigh = null, everConnected = false;
 function connect() {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
   ws.binaryType = "arraybuffer";
-  ws.onopen = () => { lastMsg = performance.now(); };
+  ws.onopen = () => { lastMsg = performance.now(); everConnected = true; showStatus(); };
   ws.onmessage = (ev) => {
     lastMsg = performance.now();
     if (typeof ev.data === "string") { try { const m = JSON.parse(ev.data); if (m.type === "status") { st = m; showStatus(); } } catch (_) {} }
@@ -355,42 +518,56 @@ function connect() {
 setInterval(() => {                       // a WiFi drop can leave the socket open but silent
   if (ws && ws.readyState === 1 && performance.now() - lastMsg > 6000) ws.close();
   const now = performance.now(); fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; showStatus();
+  if (rec) $("rec-time").textContent = clock((Date.now() - rec.t0) / 1000);
 }, 1000);
+const clock = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
 
 function showStatus() {
-  const dot = $("dot"), s = $("status"), msg = $("msg");
-  let text, kind, m = null;
-  if (!ws || ws.readyState !== 1) { kind = "err"; text = "Not connected — retrying…";
-    m = ["Can't reach the bridge", "Make sure this phone is on the same WiFi as the P2 Pro bridge (or on its hotspot), then wait a moment."]; }
-  else if (!st.bridge) { kind = "warn"; text = "Bridge service not running";
-    m = st.type ? ["The bridge isn't running", "The browser viewer is on, but the camera bridge service isn't answering."] : ["Connecting…", ""]; }
-  else if (!st.camera_ok) { kind = "warn"; text = "Camera not connected"; m = ["Camera not connected", "Plug the P2 Pro into the bridge's USB port."]; }
-  else {
-    kind = fps > 15 ? "ok" : "warn";
-    const parts = [fps.toFixed(0) + " fps"];
+  const dot = $("dot"), s = $("status"), msg = $("msg"), badge = $("badge");
+  const linked = ws && ws.readyState === 1, stale = linked && st.camera_ok && performance.now() - lastFrameT > 3000;
+  let text, kind, m = null, b = null;
+  if (!linked) {
+    kind = "err"; text = "Not connected — retrying…";
+    if (frame) b = "Reconnecting…";
+    else m = ["Can't reach the bridge", "Make sure this phone is on the same WiFi as the P2 Pro bridge (or on its hotspot). It keeps trying by itself."];
+  } else if (!st.bridge) {
+    kind = "warn"; text = "Bridge service not running";
+    if (st.type) { m = ["The bridge isn't running", "The browser viewer is on, but the camera bridge service isn't answering."]; }
+    else if (!frame) m = ["Connecting…", ""];
+  } else if (!st.camera_ok) {
+    kind = "warn"; text = "Camera not connected";
+    if (frame) b = "Camera disconnected"; else m = ["Camera not connected", "Plug the P2 Pro into the bridge's USB port."];
+  } else {
+    kind = fps > 15 || frozen ? "ok" : "warn";
+    const parts = [frozen ? "Frozen" : fps.toFixed(0) + " fps"];
     if (st.rssi_dbm != null) parts.push(st.rssi_dbm + " dBm");
     if (st.battery_pct != null) parts.push("🔋" + Math.round(st.battery_pct) + "%");
-    if (frozen) parts.unshift("Frozen");
     text = parts.join(" · ");
+    if (stale && !frozen) b = "Waiting for frames…";
   }
   dot.className = "dot " + kind; s.textContent = text;
-  msg.hidden = !m || (frame && kind !== "err" && st.camera_ok);
+  msg.hidden = !m || !!frame;
   if (m) msg.firstElementChild.replaceChildren(Object.assign(document.createElement("b"), { textContent: m[0] }), m[1]);
+  badge.hidden = !b;
+  if (b) badge.replaceChildren(Object.assign(document.createElement("span"), { className: "spin" }), b);
+  view.classList.toggle("stale", !!b);
   $("b-range").disabled = !(st.bridge && st.can_range);
   if (st.bridge && wantHigh == null && st.high != null) setRangeLabel(st.high);
-  $("about").textContent = "P2 Pro bridge " + (st.bridge_version || st.bridge || "–") + " · web viewer " + (st.web || "–") +
+  $("about").textContent = "P2 Pro bridge " + (st.bridge_version || "–") + " · web viewer " + (st.web || "–") +
     (st.viewer ? " · also streaming to " + st.viewer : "");
 }
 let curHigh = false;
 function setRangeLabel(high) {
   if (wantHigh != null && high !== wantHigh) return;  // waiting for the camera to switch
+  if (wantHigh != null) toast(high ? "High range: 100…550 °C" : "Low range: −20…150 °C");
   wantHigh = null; curHigh = high;
   $("range-l").textContent = high ? "High" : "Low";
   $("b-range").classList.toggle("on", high);
 }
 
-// ------------------------------------------------------------------ UI
-function toast(t) { const e = $("toast"); e.textContent = t; e.classList.add("show"); clearTimeout(e._h); e._h = setTimeout(() => e.classList.remove("show"), 2600); }
+// ------------------------------------------------------------------ UI helpers
+function toast(t) { const e = $("toast"); e.textContent = t; e.classList.add("show"); clearTimeout(e._h); e._h = setTimeout(() => e.classList.remove("show"), 2200); }
+function icon(btn, id) { btn.querySelector("use").setAttribute("href", "#" + id); }
 function openSheet(id) {
   for (const s of document.querySelectorAll(".sheet")) s.classList.toggle("open", s.id === id && !s.classList.contains("open"));
   $("scrim").hidden = !document.querySelector(".sheet.open");
@@ -398,61 +575,226 @@ function openSheet(id) {
 $("scrim").onclick = () => openSheet(null);
 $("b-pal").onclick = () => openSheet("s-pal");
 $("b-set").onclick = () => openSheet("s-set");
-$("b-rot").onclick = () => { cfg.rotation = (cfg.rotation + 90) % 360; save(); layout(); };
-$("b-freeze").onclick = () => {
-  frozen = !frozen; $("b-freeze").classList.toggle("on", frozen); $("freeze-l").textContent = frozen ? "Live" : "Freeze"; showStatus();
+
+// full screen: real Fullscreen API where the browser has one (Android, iPad, desktop); on iPhone Safari the
+// bars hide and the image fills the page (Add to Home Screen removes Safari's own bars)
+const fsApi = document.fullscreenEnabled || document.webkitFullscreenEnabled;
+function inFs() { return document.body.classList.contains("fs"); }
+async function setFs(on) {
+  document.body.classList.toggle("fs", on);
+  icon($("b-fs"), on ? "i-fsx" : "i-fs");
+  try {
+    if (on && fsApi && !document.fullscreenElement && !document.webkitFullscreenElement) {
+      const el = document.documentElement;
+      await (el.requestFullscreen ? el.requestFullscreen({ navigationUI: "hide" }) : el.webkitRequestFullscreen());
+    } else if (!on && (document.fullscreenElement || document.webkitFullscreenElement)) {
+      await (document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen());
+    }
+  } catch (_) {}
+  if (on && isIOS && !standalone && !fsApi && !cfg.fsTip) { cfg.fsTip = true; save(); toast("Tip: Share → Add to Home Screen for true full screen"); }
+  poke(); setTimeout(layout, 60); setTimeout(layout, 400);
+}
+for (const ev of ["fullscreenchange", "webkitfullscreenchange"])
+  document.addEventListener(ev, () => { if (!document.fullscreenElement && !document.webkitFullscreenElement && inFs() && fsApi) setFs(false); });
+$("b-fs").onclick = () => setFs(!inFs());
+let idleT = 0;
+function poke() {                     // touch → show the floating controls again for a few seconds
+  document.body.classList.remove("idle"); clearTimeout(idleT);
+  if (inFs() && cfg.autohide) idleT = setTimeout(() => document.body.classList.add("idle"), 3500);
+}
+
+$("b-rot").onclick = () => { cfg.rotation = (cfg.rotation + 90) % 360; save(); zoom = 1; panX = panY = 0; layout(); };
+function setFrozen(on) {
+  frozen = on; $("b-freeze").classList.toggle("on", on); icon($("b-freeze"), on ? "i-play" : "i-pause");
+  toast(on ? "Frozen — tap ▶ to go live" : "Live"); showStatus();
+}
+$("b-freeze").onclick = () => setFrozen(!frozen);
+$("b-lock").onclick = () => {
+  if (lock) { lock = null; toast("Colour range follows the scene"); }
+  else if (frame) { lock = { min: frame.min, max: frame.max }; toast("Colour range locked at " + fmt(toC(lock.min)) + " … " + fmt(toC(lock.max))); }
+  $("b-lock").classList.toggle("on", !!lock); icon($("b-lock"), lock ? "i-lock" : "i-unlock"); redraw();
 };
 $("b-range").onclick = () => {
   if (!ws || ws.readyState !== 1) return;
-  const high = !curHigh; wantHigh = high;
+  const high = !curHigh; wantHigh = high; lock = null; $("b-lock").classList.remove("on"); icon($("b-lock"), "i-unlock");
   ws.send(JSON.stringify({ cmd: "set_range", high }));
-  $("range-l").textContent = "…"; toast(high ? "Switching to the high range (100…550 °C)…" : "Switching to the low range (−20…150 °C)…");
-  setTimeout(() => { if (wantHigh != null) { wantHigh = null; setRangeLabel(curHigh); } }, 6000);
+  $("range-l").textContent = "…"; toast(high ? "Switching to the high range…" : "Switching to the low range…");
+  setTimeout(() => { if (wantHigh != null) { wantHigh = null; setRangeLabel(curHigh); toast("The camera didn't switch range"); } }, 6000);
 };
-view.addEventListener("pointerup", (ev) => {
-  if (!geo) return;
-  const p = toImage(ev.offsetX * geo.dpr, ev.offsetY * geo.dpr);
-  if (p) { spot = p; if (frame) render(); }
-});
-$("b-clear").onclick = () => { spot = null; if (frame) render(); toast("Spot cleared; showing the centre."); };
+$("r-spot").onclick = () => { if (spot) { spot = null; redraw(); toast("Spot cleared"); } };
+$("b-clear").onclick = () => { spot = null; redraw(); toast("Spot cleared; showing the centre"); };
+$("zoom-l").onclick = () => setZoom(1);
 
-$("b-snap").onclick = async () => {
-  if (!frame) return;
-  const c = document.createElement("canvas"), side = cfg.rotation % 180 !== 0, scale = 4, d = 2;
-  const iw = (side ? H : W) * scale, ih = (side ? W : H) * scale, barW = 46 * d;
-  c.width = iw + barW + 8 * d; c.height = ih;
-  const g = { s: scale, dw: iw, dh: ih, ox: 0, oy: 0, rot: cfg.rotation % 360, dpr: d, barW };
-  render(c.getContext("2d"), g);
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-  const blob = await new Promise(r => c.toBlob(r, "image/png"));
-  const file = new File([blob], `thermal-${stamp}.png`, { type: "image/png" });
+// ------------------------------------------------------------------ gestures on the image
+const ptrs = new Map();
+let gest = null, lastTap = { t: 0, x: 0, y: 0 }, tapTimer = 0;
+function cpos(ev) { const r = view.getBoundingClientRect(), d = geo.dpr; return [(ev.clientX - r.left) * d, (ev.clientY - r.top) * d]; }
+view.addEventListener("pointerdown", (ev) => {
+  if (!geo) return;
+  poke();
+  view.setPointerCapture(ev.pointerId);
+  const [x, y] = cpos(ev);
+  ptrs.set(ev.pointerId, { x, y });
+  if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()];
+    gest = { kind: "pinch", d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: zoom, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, px: panX, py: panY };
+  } else if (ptrs.size === 1) {
+    let kind = zoom > 1.01 ? "pan" : "swipe";
+    if (spot) { const [sx, sy] = toScreen(geo, spot.x, spot.y); if (Math.hypot(sx - x, sy - y) < 34 * geo.dpr) kind = "spot"; }
+    gest = { kind, x0: x, y0: y, px: panX, py: panY, t0: performance.now(), moved: false };
+  }
+});
+view.addEventListener("pointermove", (ev) => {
+  if (!ptrs.has(ev.pointerId) || !gest) return;
+  const [x, y] = cpos(ev); ptrs.set(ev.pointerId, { x, y });
+  if (gest.kind === "pinch" && ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const z = Math.max(1, Math.min(8, gest.z0 * d / gest.d0)), cx = geo.areaW / 2, cy = geo.areaH / 2;
+    panX = mx - cx - (gest.mx - cx - gest.px) * (z / gest.z0);
+    panY = my - cy - (gest.my - cy - gest.py) * (z / gest.z0);
+    zoom = z; layout(); return;
+  }
+  const dx = x - gest.x0, dy = y - gest.y0;
+  if (Math.hypot(dx, dy) > 10 * geo.dpr) gest.moved = true;
+  if (!gest.moved) return;
+  if (gest.kind === "spot") { const p = toImage(x, y); if (p) { spot = p; redraw(); } }
+  else if (gest.kind === "pan") { panX = gest.px + dx; panY = gest.py + dy; layout(); }
+});
+function endPointer(ev) {
+  if (!ptrs.has(ev.pointerId)) return;
+  const [x, y] = cpos(ev); ptrs.delete(ev.pointerId);
+  const g = gest;
+  if (!g || g.kind === "pinch") { if (ptrs.size === 0) gest = null; return; }
+  gest = null;
+  const dt = performance.now() - g.t0, dx = x - g.x0, dy = y - g.y0, d = geo.dpr;
+  if (g.kind === "swipe" && g.moved && Math.abs(dx) > 60 * d && Math.abs(dy) < Math.abs(dx) * 0.6 && dt < 700) {
+    const list = palFeatured.length ? palFeatured : palNames, i = list.indexOf(cfg.palette);
+    const n = list[((i < 0 ? 0 : i) + (dx < 0 ? 1 : -1) + list.length) % list.length];
+    setPalette(n); toast("Palette: " + n); return;
+  }
+  if (g.moved || dt > 500 || ev.type === "pointercancel") return;
+  // a tap: wait briefly to tell a single tap (spot) from a double tap (zoom)
+  const now = performance.now();
+  if (now - lastTap.t < 300 && Math.hypot(x - lastTap.x, y - lastTap.y) < 40 * d) {
+    clearTimeout(tapTimer); lastTap.t = 0;
+    if (zoom > 1.01) setZoom(1); else setZoom(2.5, x, y);
+    return;
+  }
+  lastTap = { t: now, x, y };
+  tapTimer = setTimeout(() => { const p = toImage(x, y); if (p) { spot = p; redraw(); } }, 260);
+}
+view.addEventListener("pointerup", endPointer);
+view.addEventListener("pointercancel", endPointer);
+view.addEventListener("wheel", (ev) => { ev.preventDefault(); const [x, y] = cpos(ev); setZoom(zoom * (ev.deltaY < 0 ? 1.15 : 1 / 1.15), x, y); }, { passive: false });
+document.addEventListener("pointerdown", () => { poke(); keepAwake(); }, true);
+document.addEventListener("gesturestart", (e) => e.preventDefault());     // iOS page zoom
+
+// ------------------------------------------------------------------ snapshot & recording
+function exportGeo(scale) {
+  const side = cfg.rotation % 180 !== 0, d = 2, iw = (side ? H : W) * scale, ih = (side ? W : H) * scale;
+  const c = document.createElement("canvas");
+  c.width = iw + (BAR + 4) * d; c.height = ih;
+  return [c, baseGeo(c.width, c.height, d)];
+}
+async function shareOrSave(blob, name) {
+  const file = new File([blob], name, { type: blob.type });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === "AbortError") return; }
   }
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast("Snapshot saved.");
-};
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000); toast("Saved " + name);
+}
+const stamp = () => { const t = new Date(), p = (n) => String(n).padStart(2, "0");
+  return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}_${p(t.getHours())}-${p(t.getMinutes())}-${p(t.getSeconds())}`; };
+async function snapshot() {
+  if (!frame) return;
+  const f = $("flash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
+  if (navigator.vibrate) navigator.vibrate(20);
+  const [c, g] = exportGeo(4);
+  render(c.getContext("2d"), g);
+  const blob = await new Promise(r => c.toBlob(r, "image/png"));
+  shareOrSave(blob, `thermal_${stamp()}.png`);
+}
+$("b-snap").onclick = snapshot; $("b-snap2").onclick = snapshot;
 
+const recType = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
+  .find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+if (!recType || !HTMLCanvasElement.prototype.captureStream) $("b-rec").hidden = true;
+function startRec() {
+  if (!frame) return toast("Nothing to record yet");
+  const [c, g] = exportGeo(3);
+  const ctx = c.getContext("2d");
+  const mr = new MediaRecorder(c.captureStream(25), { mimeType: recType, videoBitsPerSecond: 6e6 });
+  rec = { mr, canvas: c, ctx, g, t0: Date.now(), chunks: [], type: recType };
+  mr.ondataavailable = (e) => { if (e.data.size) rec && rec.chunks.push(e.data); };
+  const r = rec;
+  mr.onstop = () => {
+    const blob = new Blob(r.chunks, { type: r.type.split(";")[0] });
+    shareOrSave(blob, `thermal_${stamp()}.${r.type.startsWith("video/mp4") ? "mp4" : "webm"}`);
+  };
+  render(ctx, g); mr.start(1000);
+  $("b-rec").classList.add("on"); $("rec-l").textContent = "Stop"; $("rec-time").hidden = false; $("rec-time").textContent = "0:00";
+  toast("Recording");
+}
+function stopRec() {
+  const r = rec; rec = null;
+  if (r) r.mr.stop();
+  $("b-rec").classList.remove("on"); $("rec-l").textContent = "Record"; $("rec-time").hidden = true;
+}
+$("b-rec").onclick = () => rec ? stopRec() : startRec();
+
+// ------------------------------------------------------------------ keep the screen on
+let wake = null;
+async function keepAwake() {
+  if (!cfg.awake || !("wakeLock" in navigator) || document.visibilityState !== "visible" || wake) return;
+  try { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); } catch (_) {}
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); else if (rec) stopRec(); });
+
+// ------------------------------------------------------------------ settings & keys
 function bindSettings() {
   const seg = $("seg-unit");
   const paintSeg = () => seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === cfg.unit));
-  seg.onclick = (ev) => { const v = ev.target.dataset.v; if (v) { cfg.unit = v; save(); paintSeg(); if (frame) render(); } };
+  seg.onclick = (ev) => { const v = ev.target.dataset.v; if (v) { cfg.unit = v; save(); paintSeg(); redraw(); } };
   paintSeg();
   const emi = $("emi"); emi.value = cfg.emissivity; $("emi-v").textContent = (+cfg.emissivity).toFixed(2);
-  emi.oninput = () => { cfg.emissivity = +emi.value; $("emi-v").textContent = cfg.emissivity.toFixed(2); updateCorrection(); save(); if (frame) render(); };
-  for (const k of ["smooth", "invert", "mirror", "markers"]) {
+  emi.oninput = () => { cfg.emissivity = +emi.value; $("emi-v").textContent = cfg.emissivity.toFixed(2); updateCorrection(); save(); redraw(); };
+  for (const k of ["smooth", "invert", "mirror", "markers", "awake", "autohide"]) {
     $(k).checked = !!cfg[k];
-    $(k).onchange = () => { cfg[k] = $(k).checked; save(); if (k === "invert") buildLut(); else if (frame) render(); };
+    $(k).onchange = () => {
+      cfg[k] = $(k).checked; save();
+      if (k === "invert") buildLut();
+      else if (k === "awake") { if (cfg.awake) keepAwake(); else if (wake) { wake.release(); wake = null; } }
+      else if (k === "autohide") poke();
+      else redraw();
+    };
   }
+  if (!("wakeLock" in navigator)) $("awake").closest(".set").hidden = true;
 }
+function showHelp(on) { $("help").hidden = !on; if (!on && !cfg.helped) { cfg.helped = true; save(); } }
+$("b-help").onclick = () => { openSheet(null); showHelp(true); };
+$("b-help-ok").onclick = () => showHelp(false);
+$("ios-tip").hidden = !(isIOS && !standalone);
+document.addEventListener("keydown", (ev) => {
+  if (ev.target.tagName === "INPUT") return;
+  const k = ev.key.toLowerCase();
+  if (k === "f") setFs(!inFs());
+  else if (k === " ") { ev.preventDefault(); setFrozen(!frozen); }
+  else if (k === "s") snapshot();
+  else if (k === "r") $("b-rot").click();
+  else if (k === "escape") { if ($("help").hidden === false) showHelp(false); else openSheet(null); }
+});
 
 window.addEventListener("resize", layout);
-window.addEventListener("orientationchange", () => setTimeout(layout, 200));
+window.addEventListener("orientationchange", () => setTimeout(layout, 250));
 updateCorrection(); bindSettings(); layout();
 if (!("DecompressionStream" in window)) {
   $("msg").firstElementChild.innerHTML = "<b>This browser is too old</b>Update iOS (16.4 or newer), or use a current Safari, Chrome or Firefox.";
 } else {
   loadPalettes().catch(() => toast("Palettes failed to load")).finally(connect);
+  keepAwake();
+  if (!cfg.helped) showHelp(true);
 }
 </script>
 </body>

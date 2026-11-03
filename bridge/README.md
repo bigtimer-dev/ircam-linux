@@ -78,8 +78,11 @@ iOS doesn't allow apps to talk to the P2 Pro over USB, so iPhones watch through 
 3. Open the link it shows (`http://p2pro.local:8080`) in Safari. Share → **Add to Home Screen**
    gives it an app icon and full screen.
 
-It has live view, max/min/centre readouts, tap-to-measure, 52 palettes, Low/High range, rotate,
-mirror, freeze, snapshot (Share → Save Image), emissivity and °C/°F. Needs iOS 16.4 or newer.
+It has live view, max/min/centre readouts, 52 palettes, Low/High range, snapshot (Share → Save
+Image), video recording, emissivity and °C/°F. Touch: tap to measure (drag the spot to move it),
+pinch or double-tap to zoom, swipe left/right for the next palette. Full screen (controls hide
+until you touch the screen), a landscape layout with the controls at the side, a colour-range
+lock, freeze, rotate, mirror and keep-screen-on. Needs iOS 16.4 or newer.
 
 It's an add-on: it reads frames from a local socket on the Pi (`--tap`), separate from the IRW1
 viewer slot, so IRCAM on the PC or Android keeps streaming while a browser watches. With no
