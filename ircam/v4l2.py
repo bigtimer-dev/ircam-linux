@@ -33,7 +33,9 @@ class PixFormat(ct.Structure):
 
 
 class _FmtUnion(ct.Union):
-    _fields_ = [("pix", PixFormat), ("raw", ct.c_uint8 * 200), ("_align", ct.c_uint64)]
+    # the kernel union also holds struct v4l2_window (pointers): pointer alignment, so 204 bytes
+    # in all on 32-bit ARM and 208 on 64-bit
+    _fields_ = [("pix", PixFormat), ("raw", ct.c_uint8 * 200), ("_align", ct.c_void_p)]
 
 
 class Format(ct.Structure):
@@ -65,7 +67,9 @@ class RequestBuffers(ct.Structure):
 
 
 class Timeval(ct.Structure):
-    _fields_ = [("sec", ct.c_long), ("usec", ct.c_long)]
+    # the kernel's native v4l2 timeval is 2 x 64 bits on every architecture (32-bit systems with
+    # 64-bit time_t, e.g. Debian trixie armhf, use it); same as long on 64-bit
+    _fields_ = [("sec", ct.c_int64), ("usec", ct.c_int64)]
 
 
 class Timecode(ct.Structure):

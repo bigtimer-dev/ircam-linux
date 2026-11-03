@@ -23,9 +23,16 @@ from ircam.sources import DemoSource, RecordingSource, SnapshotSource  # noqa: E
 
 class StructSizes(unittest.TestCase):
     def test_v4l2_structs_match_kernel_abi(self):
-        for name, size in [("Capability", 104), ("Format", 208), ("FmtDesc", 64), ("FrmSizeEnum", 44),
-                           ("RequestBuffers", 20), ("Buffer", 88), ("StreamParm", 204), ("Control", 8)]:
+        # Format and Buffer hold pointers, so they differ on 32-bit systems (Pi Zero W, armhf);
+        # the size is part of the ioctl number, so a wrong one fails with ENOTTY
+        is64 = ct.sizeof(ct.c_void_p) == 8
+        for name, size in [("Capability", 104), ("Format", 208 if is64 else 204), ("FmtDesc", 64),
+                           ("FrmSizeEnum", 44), ("RequestBuffers", 20), ("Buffer", 88 if is64 else 80),
+                           ("StreamParm", 204), ("Control", 8)]:
             self.assertEqual(ct.sizeof(getattr(v4l2, name)), size, name)
+        if is64:   # unchanged request numbers for every existing 64-bit install
+            self.assertEqual((v4l2.G_FMT, v4l2.S_FMT, v4l2.QUERYBUF, v4l2.QBUF, v4l2.DQBUF),
+                             (0xC0D05604, 0xC0D05605, 0xC0585609, 0xC058560F, 0xC0585611))
 
 
 class Thermal(unittest.TestCase):
